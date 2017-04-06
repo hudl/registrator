@@ -108,6 +108,14 @@ func getTargetGroupsPage(svc *elbv2.ELBV2, marker *string) (*elbv2.DescribeTarge
 		PageSize: awssdk.Int64(400),
 		Marker:   marker,
 	}
+
+	// Random wait to try to avoid getting throttled by AWS API
+	seed := rand.NewSource(time.Now().UnixNano())
+	r2 := rand.New(seed)
+	random := r2.Intn(5000)
+	period := time.Millisecond * time.Duration(random)
+	time.Sleep(period)
+
 	tg, e := svc.DescribeTargetGroups(params)
 
 	if e != nil {
@@ -135,8 +143,11 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 
 	// We need to have small random wait here, because it takes a little while for new containers to appear in target groups
 	// to avoid any wait, the endpoints can be specified manually as eureka_elbv2_hostname and eureka_elbv2_port vars
-	rand.NewSource(time.Now().UnixNano())
-	period := time.Second * time.Duration(rand.Intn(10)+20)
+	seed := rand.NewSource(time.Now().UnixNano())
+	r2 := rand.New(seed)
+	random := r2.Intn(10)
+	period := time.Second * time.Duration(random+10)
+	log.Printf("Waiting for %v seconds", period)
 	time.Sleep(period)
 
 	var lbArns []*string
@@ -163,7 +174,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	}
 
 	// Check each target group's target list for a matching port and instanceID
-	// TODO Assumption: that that there is only one LB for the target group (though the data structure allows more)
+	// Assumption: that that there is only one LB for the target group (though the data structure allows more)
 	for _, tgs := range tgslice {
 		for _, tg := range tgs.TargetGroups {
 
