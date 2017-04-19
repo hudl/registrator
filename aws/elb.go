@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/gliderlabs/registrator/bridge"
 	fargo "github.com/hudl/fargo"
+	gocache "github.com/patrickmn/go-cache"
 )
 
 // LBInfo represents a ELBv2 endpoint
@@ -32,48 +34,64 @@ type cacheEntry struct {
 	lb *LBInfo
 }
 
-type lbCache struct {
-	*sync.Mutex
-	m map[string]cacheEntry
+var defExpirationTime = 10 * time.Second
+var generalCache = gocache.New(defExpirationTime, defExpirationTime)
+
+type any interface{}
+
+// Pre-cache the target groups list for reduced API requests on startup.
+func init() {
+	svc, err := getSession()
+
+	out1, err := getAndCache("tg", svc, getAllTargetGroups, 30*time.Second)
+	tgslice := out1.([]*elbv2.DescribeTargetGroupsOutput)
+	if err != nil || tgslice == nil {
+		log.Printf("Failed to retrieve Target Groups: %s", err)
+	}
 }
 
-var cache = lbCache{&sync.Mutex{}, make(map[string]cacheEntry)}
-
-type fn func(lookupValues) (*LBInfo, error)
-
 //
-// Return a *LBInfo cache entry if it exists, or run the provided function to return data to add to cache
-// The locking complexity is purely to make the cache thread safe.
+// Provide a general caching mechanism for any function that lasts a few seconds.
 //
-func getOrAddCacheEntry(key string, f fn, i lookupValues) (*LBInfo, error) {
-	cache.Lock()
-	if _, ok := cache.m[key]; !ok {
-		cache.m[key] = cacheEntry{&sync.Mutex{}, &LBInfo{Port: 0, DNSName: "should-have-been-set"}}
-	}
-	cache.m[key].Lock()
-	defer cache.m[key].Unlock()
-	cache.Unlock()
-	if cache.m[key].lb.Port == 0 {
-		o, err := f(i)
-		if err != nil {
-			log.Print("An error occurred trying to add data to the cache:", err)
-			return nil, err
+func getAndCache(key string, input any, f any, cacheTime time.Duration) (any, error) {
+
+	vf := reflect.ValueOf(f)
+	vinput := reflect.ValueOf(input)
+
+	result, found := generalCache.Get(key)
+	if !found {
+		log.Printf("Key %v not cached.  Caching for %v", key, cacheTime)
+		caller := vf.Call([]reflect.Value{vinput})
+		output := caller[0].Interface()
+		err, _ := caller[1].Interface().(error)
+		if err == nil {
+			generalCache.Set(key, output, cacheTime)
+			return output, nil
 		}
-		tmp := cache.m[key]
-		tmp.lb = o
-		cache.m[key] = tmp
+		return nil, err
 	}
-	return cache.m[key].lb, nil
+	return result, nil
 }
 
 // RemoveLBCache : Delete any cache of load balancer for this containerID
 func RemoveLBCache(key string) {
-	cache.Lock()
-	delete(cache.m, key)
-	cache.Unlock()
+	generalCache.Delete(key)
 }
 
 var registrations = make(map[string]bool)
+
+// Get a session to AWS API
+func getSession() (*elbv2.ELBV2, error) {
+	sess, err := session.NewSession()
+	if err != nil {
+		message := fmt.Errorf("Failed to create session connecting to AWS: %s", err)
+		return nil, message
+	}
+
+	// Need to set the region here - we'll get it from instance metadata
+	awsMetadata := GetMetadata()
+	return elbv2.New(sess, awssdk.NewConfig().WithRegion(awsMetadata.Region)), nil
+}
 
 // Helper function to retrieve all target groups
 func getAllTargetGroups(svc *elbv2.ELBV2) ([]*elbv2.DescribeTargetGroupsOutput, error) {
@@ -109,13 +127,6 @@ func getTargetGroupsPage(svc *elbv2.ELBV2, marker *string) (*elbv2.DescribeTarge
 		Marker:   marker,
 	}
 
-	// Random wait to try to avoid getting throttled by AWS API
-	seed := rand.NewSource(time.Now().UnixNano())
-	r2 := rand.New(seed)
-	random := r2.Intn(5000)
-	period := time.Millisecond * time.Duration(random)
-	time.Sleep(period)
-
 	tg, e := svc.DescribeTargetGroups(params)
 
 	if e != nil {
@@ -131,43 +142,42 @@ func getTargetGroupsPage(svc *elbv2.ELBV2, marker *string) (*elbv2.DescribeTarge
 //
 func GetELBV2ForContainer(containerID string, instanceID string, port int64) (lbinfo *LBInfo, err error) {
 	i := lookupValues{InstanceID: instanceID, Port: port}
-	return getOrAddCacheEntry(containerID, getLB, i)
+	out, err := getAndCache(containerID, i, getLB, gocache.NoExpiration)
+	return out.(*LBInfo), err
 }
 
 //
 // Does the real work of retrieving the load balancer details, given a lookupValues struct.
+// Note: This function uses caching extensively to reduce the burden on the AWS API when called from multiple goroutines
 //
 func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	instanceID := l.InstanceID
 	port := l.Port
-
-	// We need to have small random wait here, because it takes a little while for new containers to appear in target groups
-	// to avoid any wait, the endpoints can be specified manually as eureka_elbv2_hostname and eureka_elbv2_port vars
-	seed := rand.NewSource(time.Now().UnixNano())
-	r2 := rand.New(seed)
-	random := r2.Intn(10)
-	period := time.Second * time.Duration(random+10)
-	log.Printf("Waiting for %v seconds", period)
-	time.Sleep(period)
 
 	var lbArns []*string
 	var lbPort *int64
 	var tgArn string
 	info := &LBInfo{}
 
-	sess, err := session.NewSession()
-	if err != nil {
-		message := fmt.Errorf("Failed to create session connecting to AWS: %s", err)
-		return nil, message
-	}
+	// We need to have small random wait here, between 5 and 20s, because it takes a little while for new containers to appear in target groups
+	// To avoid any wait, the endpoints can be specified manually as eureka_elbv2_hostname and eureka_elbv2_port vars
+	seed := rand.NewSource(time.Now().UnixNano())
+	r2 := rand.New(seed)
+	random := r2.Intn(15000)
+	period := (time.Second * time.Duration(5)) + (time.Duration(random) * time.Millisecond)
+	log.Printf("Waiting for %v seconds", period)
+	time.Sleep(period)
 
-	// Need to set the region here - we'll get it from instance metadata
-	awsMetadata := GetMetadata()
-	svc := elbv2.New(sess, awssdk.NewConfig().WithRegion(awsMetadata.Region))
+	svc, err := getSession()
+	if err != nil {
+		return nil, err
+	}
 
 	// TODO Note: There could be thousands of these, and we need to check them all.  Seems to be no
 	// other way to retrieve a TG via instance/port with current API
-	tgslice, err := getAllTargetGroups(svc)
+
+	out1, err := getAndCache("tg", svc, getAllTargetGroups, defExpirationTime)
+	tgslice := out1.([]*elbv2.DescribeTargetGroupsOutput)
 	if err != nil || tgslice == nil {
 		message := fmt.Errorf("Failed to retrieve Target Groups: %s", err)
 		return nil, message
@@ -182,7 +192,8 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 				TargetGroupArn: awssdk.String(*tg.TargetGroupArn),
 			}
 
-			tarH, err := svc.DescribeTargetHealth(thParams)
+			out2, err := getAndCache(*thParams.TargetGroupArn, thParams, svc.DescribeTargetHealth, defExpirationTime)
+			tarH := out2.(*elbv2.DescribeTargetHealthOutput)
 			if err != nil {
 				log.Printf("An error occurred using DescribeTargetHealth: %s \n", err.Error())
 				return nil, err
@@ -210,11 +221,12 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	lsnrParams := &elbv2.DescribeListenersInput{
 		LoadBalancerArn: lbArns[0],
 	}
-	lnrData, err := svc.DescribeListeners(lsnrParams)
+	out3, err := getAndCache("lsnr_"+*lsnrParams.LoadBalancerArn, lsnrParams, svc.DescribeListeners, defExpirationTime)
 	if err != nil {
 		log.Printf("An error occurred using DescribeListeners: %s \n", err.Error())
 		return nil, err
 	}
+	lnrData := out3.(*elbv2.DescribeListenersOutput)
 	for _, listener := range lnrData.Listeners {
 		for _, act := range listener.DefaultActions {
 			if *act.TargetGroupArn == tgArn {
@@ -233,11 +245,12 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	lbParams := &elbv2.DescribeLoadBalancersInput{
 		LoadBalancerArns: lbArns,
 	}
-	lbData, err := svc.DescribeLoadBalancers(lbParams)
+	out4, err := getAndCache("lb_"+*lbParams.LoadBalancerArns[0], lbParams, svc.DescribeLoadBalancers, defExpirationTime)
 	if err != nil {
 		log.Printf("An error occurred using DescribeLoadBalancers: %s \n", err.Error())
 		return nil, err
 	}
+	lbData := out4.(*elbv2.DescribeLoadBalancersOutput)
 	log.Printf("LB Endpoint for Instance:%v Port:%v, Target Group:%v, is: %s:%s\n", instanceID, port, tgArn, *lbData.LoadBalancers[0].DNSName, strconv.FormatInt(*lbPort, 10))
 
 	info.DNSName = *lbData.LoadBalancers[0].DNSName
