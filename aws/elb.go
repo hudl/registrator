@@ -149,11 +149,11 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	// other way to retrieve a TG via instance/port with current API
 
 	out1, err := getAndCache("tg", svc, getAllTargetGroups, defExpirationTime)
-	tgslice := out1.([]*elbv2.DescribeTargetGroupsOutput)
 	if err != nil || tgslice == nil {
 		message := fmt.Errorf("Failed to retrieve Target Groups: %s", err)
 		return nil, message
 	}
+	tgslice, _ := out1.([]*elbv2.DescribeTargetGroupsOutput)
 
 	// Check each target group's target list for a matching port and instanceID
 	// Assumption: that that there is only one LB for the target group (though the data structure allows more)
@@ -165,12 +165,11 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 			}
 
 			out2, err := getAndCache(*thParams.TargetGroupArn, thParams, svc.DescribeTargetHealth, defExpirationTime)
-			tarH := out2.(*elbv2.DescribeTargetHealthOutput)
-			if err != nil {
+			if err != nil || out2 == nil {
 				log.Printf("An error occurred using DescribeTargetHealth: %s \n", err.Error())
 				return nil, err
 			}
-
+			tarH, _ := out2.(*elbv2.DescribeTargetHealthOutput)
 			for _, thd := range tarH.TargetHealthDescriptions {
 				if *thd.Target.Port == port && *thd.Target.Id == instanceID {
 					lbArns = tg.LoadBalancerArns
@@ -194,11 +193,11 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 		LoadBalancerArn: lbArns[0],
 	}
 	out3, err := getAndCache("lsnr_"+*lsnrParams.LoadBalancerArn, lsnrParams, svc.DescribeListeners, defExpirationTime)
-	if err != nil {
+	if err != nil || out3 == nil {
 		log.Printf("An error occurred using DescribeListeners: %s \n", err.Error())
 		return nil, err
 	}
-	lnrData := out3.(*elbv2.DescribeListenersOutput)
+	lnrData, _ := out3.(*elbv2.DescribeListenersOutput)
 	for _, listener := range lnrData.Listeners {
 		for _, act := range listener.DefaultActions {
 			if *act.TargetGroupArn == tgArn {
@@ -218,11 +217,11 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 		LoadBalancerArns: lbArns,
 	}
 	out4, err := getAndCache("lb_"+*lbParams.LoadBalancerArns[0], lbParams, svc.DescribeLoadBalancers, defExpirationTime)
-	if err != nil {
+	if err != nil || out4 == nil {
 		log.Printf("An error occurred using DescribeLoadBalancers: %s \n", err.Error())
 		return nil, err
 	}
-	lbData := out4.(*elbv2.DescribeLoadBalancersOutput)
+	lbData, _ := out4.(*elbv2.DescribeLoadBalancersOutput)
 	log.Printf("LB Endpoint for Instance:%v Port:%v, Target Group:%v, is: %s:%s\n", instanceID, port, tgArn, *lbData.LoadBalancers[0].DNSName, strconv.FormatInt(*lbPort, 10))
 
 	info.DNSName = *lbData.LoadBalancers[0].DNSName
