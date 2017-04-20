@@ -10,6 +10,7 @@ import (
 
 	"github.com/gliderlabs/registrator/bridge"
 	eureka "github.com/hudl/fargo"
+	gocache "github.com/patrickmn/go-cache"
 )
 
 // TestCheckELBOnlyReg - Test that ELBv2 only flag is evaulated correctly - default true
@@ -73,8 +74,10 @@ func setupCache(containerID string, instanceID string, lbDNSName string, contain
 		return &LBInfo{DNSName: lbDNSName, Port: lbPort}, nil
 	}
 	i := lookupValues{InstanceID: instanceID, Port: containerPort}
-	getOrAddCacheEntry(containerID, fn, i)
-	fmt.Printf("Cache value now looks like this: %+v\n", cache.m["123123412"].lb)
+
+	getAndCache(containerID, i, fn, gocache.NoExpiration)
+	r, _ := generalCache.Get("123123412")
+	fmt.Printf("Cache value now looks like this: %+v\n", r.(*LBInfo))
 }
 
 // Test_GetELBV2ForContainer - Test expected values are returned
@@ -270,10 +273,12 @@ func Test_setRegInfo(t *testing.T) {
 	// Init LB info cache
 	setupCache("123123412", "instance-123", "correct-lb-dnsname", int64(1234), int64(9001))
 
+	r, _ := generalCache.Get("123123412")
+	lb := r.(*LBInfo)
 	wantedAwsInfo := eureka.AmazonMetadataType{
-		PublicHostname: cache.m["123123412"].lb.DNSName,
-		HostName:       cache.m["123123412"].lb.DNSName,
-		InstanceID:     cache.m["123123412"].lb.DNSName + "_" + strconv.Itoa(int(cache.m["123123412"].lb.Port)),
+		PublicHostname: lb.DNSName,
+		HostName:       lb.DNSName,
+		InstanceID:     lb.DNSName + "_" + strconv.Itoa(int(lb.Port)),
 	}
 	wantedDCInfo := eureka.DataCenterInfo{
 		Name:     eureka.Amazon,
@@ -282,11 +287,11 @@ func Test_setRegInfo(t *testing.T) {
 
 	wanted := eureka.Instance{
 		DataCenterInfo: wantedDCInfo,
-		Port:           int(cache.m["123123412"].lb.Port),
+		Port:           int(lb.Port),
 		App:            svc.Name,
 		IPAddr:         "",
 		VipAddress:     "",
-		HostName:       cache.m["123123412"].lb.DNSName,
+		HostName:       lb.DNSName,
 		Status:         eureka.UP,
 	}
 
@@ -313,7 +318,7 @@ func Test_setRegInfo(t *testing.T) {
 				t.Errorf("setRegInfo() = %+v, \n Wanted has-elbv2=true in metadata, was %+v", got, val)
 			}
 			val2 := got.Metadata.GetMap()["elbv2-endpoint"]
-			wantVal := cache.m["123123412"].lb.DNSName + "_" + strconv.Itoa(int(cache.m["123123412"].lb.Port))
+			wantVal := lb.DNSName + "_" + strconv.Itoa(int(lb.Port))
 			if val2 != wantVal {
 				t.Errorf("setRegInfo() = %+v, \n Wanted elbv2-endpoint=%v in metadata, was %+v", got, wantVal, val)
 			}
@@ -484,10 +489,12 @@ func Test_setRegInfoELBv2Only(t *testing.T) {
 	// Init LB info cache
 	setupCache("123123412", "instance-123", "correct-hostname", int64(1234), int64(12345))
 
+	r, _ := generalCache.Get("123123412")
+	lb := r.(*LBInfo)
 	wantedAwsInfo := eureka.AmazonMetadataType{
-		PublicHostname: cache.m["123123412"].lb.DNSName,
-		HostName:       cache.m["123123412"].lb.DNSName,
-		InstanceID:     cache.m["123123412"].lb.DNSName + "_" + strconv.Itoa(int(cache.m["123123412"].lb.Port)),
+		PublicHostname: lb.DNSName,
+		HostName:       lb.DNSName,
+		InstanceID:     lb.DNSName + "_" + strconv.Itoa(int(lb.Port)),
 	}
 	wantedDCInfo := eureka.DataCenterInfo{
 		Name:     eureka.Amazon,
@@ -496,11 +503,11 @@ func Test_setRegInfoELBv2Only(t *testing.T) {
 
 	wanted := eureka.Instance{
 		DataCenterInfo: wantedDCInfo,
-		Port:           int(cache.m["123123412"].lb.Port),
+		Port:           int(lb.Port),
 		App:            svc.Name,
 		IPAddr:         "",
 		VipAddress:     "",
-		HostName:       cache.m["123123412"].lb.DNSName,
+		HostName:       lb.DNSName,
 		Status:         eureka.UP,
 	}
 
@@ -523,7 +530,7 @@ func Test_setRegInfoELBv2Only(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := setRegInfo(tt.args.service, tt.args.registration)
 			CheckMetadata(t, got.Metadata, "has-elbv2", "true")
-			wantVal := cache.m["123123412"].lb.DNSName + "_" + strconv.Itoa(int(cache.m["123123412"].lb.Port))
+			wantVal := lb.DNSName + "_" + strconv.Itoa(int(lb.Port))
 			CheckMetadata(t, got.Metadata, "elbv2-endpoint", wantVal)
 			CheckMetadata(t, got.Metadata, "container-id", "")
 			CheckMetadata(t, got.Metadata, "container-name", "")
