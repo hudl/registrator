@@ -39,17 +39,6 @@ var generalCache = gocache.New(defExpirationTime, defExpirationTime)
 
 type any interface{}
 
-// Pre-cache the target groups list for reduced API requests on startup.
-func init() {
-	svc, err := getSession()
-
-	out1, err := getAndCache("tg", svc, getAllTargetGroups, 30*time.Second)
-	tgslice := out1.([]*elbv2.DescribeTargetGroupsOutput)
-	if err != nil || tgslice == nil {
-		log.Printf("Failed to retrieve Target Groups: %s", err)
-	}
-}
-
 //
 // Provide a general caching mechanism for any function that lasts a few seconds.
 //
