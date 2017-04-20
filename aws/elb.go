@@ -123,7 +123,8 @@ func getTargetGroupsPage(svc *elbv2.ELBV2, marker *string) (*elbv2.DescribeTarge
 func GetELBV2ForContainer(containerID string, instanceID string, port int64) (lbinfo *LBInfo, err error) {
 	i := lookupValues{InstanceID: instanceID, Port: port}
 	out, err := getAndCache(containerID, i, getLB, gocache.NoExpiration)
-	return out.(*LBInfo), err
+	ret, _ := out.(*LBInfo)
+	return ret, err
 }
 
 //
@@ -242,7 +243,7 @@ func CheckELBFlags(service *bridge.Service) bool {
 	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" {
 		v, err := strconv.ParseUint(service.Attrs["eureka_elbv2_port"], 10, 16)
 		if err != nil {
-			log.Printf("[%v] eureka_elbv2_port must be valid 16-bit unsigned int, was %v : %s", service.Origin.ContainerID, v, err)
+			log.Printf("eureka_elbv2_port must be valid 16-bit unsigned int, was %v : %s", v, err)
 			hasExplicit = false
 		}
 		hasExplicit = true
@@ -252,7 +253,7 @@ func CheckELBFlags(service *bridge.Service) bool {
 	if service.Attrs["eureka_lookup_elbv2_endpoint"] != "" {
 		v, err := strconv.ParseBool(service.Attrs["eureka_lookup_elbv2_endpoint"])
 		if err != nil {
-			log.Printf("[%v] eureka_lookup_elbv2_endpoint must be valid boolean, was %v : %s", service.Origin.ContainerID, v, err)
+			log.Printf("eureka_lookup_elbv2_endpoint must be valid boolean, was %v : %s", v, err)
 			useLookup = false
 		}
 		useLookup = v
@@ -270,7 +271,7 @@ func CheckELBOnlyReg(service *bridge.Service) bool {
 	if service.Attrs["eureka_elbv2_only_registration"] != "" {
 		v, err := strconv.ParseBool(service.Attrs["eureka_elbv2_only_registration"])
 		if err != nil {
-			log.Printf("[%v] eureka_elbv2_only_registration must be valid boolean, was %v : %s", service.Origin.ContainerID, v, err)
+			log.Printf("eureka_elbv2_only_registration must be valid boolean, was %v : %s", v, err)
 			return true
 		}
 		return v
@@ -292,7 +293,7 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 
 	// We've been given the ELB endpoint, so use this
 	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" {
-		log.Printf("[%v] found ELBv2 hostname=%v and port=%v options, using these.", service.Origin.ContainerID, service.Attrs["eureka_elbv2_hostname"], service.Attrs["eureka_elbv2_port"])
+		log.Printf("found ELBv2 hostname=%v and port=%v options, using these.", service.Attrs["eureka_elbv2_hostname"], service.Attrs["eureka_elbv2_port"])
 		registration.Port, _ = strconv.Atoi(service.Attrs["eureka_elbv2_port"])
 		registration.HostName = service.Attrs["eureka_elbv2_hostname"]
 		registration.IPAddr = ""
@@ -304,7 +305,7 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 		elbMetadata, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port))
 
 		if err != nil {
-			log.Printf("[%v] Unable to find associated ELBv2 for: %s, Error: %s\n", service.Origin.ContainerID, registration.HostName, err)
+			log.Printf("Unable to find associated ELBv2 for: %s, Error: %s\n", registration.HostName, err)
 			return nil
 		}
 
@@ -337,7 +338,7 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 // This will mean traffic is directed to the ALB rather than directly to containers
 func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
 	if CheckELBFlags(service) {
-		log.Printf("[%v] Found ELBv2 flags, will attempt to register LB for: %s\n", service.Origin.ContainerID, GetUniqueID(*registration))
+		log.Printf("Found ELBv2 flags, will attempt to register LB for: %s\n", GetUniqueID(*registration))
 		elbReg := setRegInfo(service, registration)
 		if elbReg != nil {
 			err := client.ReregisterInstance(elbReg)
@@ -347,7 +348,7 @@ func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, cl
 			// If there's no ELBv2 data, we need to retry a couple of times, as it takes a little while to propogate target group membership
 			// To avoid any wait, the endpoints can be specified manually as eureka_elbv2_hostname and eureka_elbv2_port vars
 			period := (time.Second * time.Duration(defExpirationTime+1) * time.Duration(i))
-			log.Printf("[%v] Retrying retrieval of ELBv2 data, attempt %v/3 - Waiting for %v seconds", service.Origin.ContainerID, i, period)
+			log.Printf("Retrying retrieval of ELBv2 data, attempt %v/3 - Waiting for %v seconds", i, period)
 			time.Sleep(period)
 			elbReg = setRegInfo(service, registration)
 			if elbReg != nil {
@@ -362,12 +363,12 @@ func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, cl
 // HeartbeatELBv2 - Heartbeat an ELB registration
 func HeartbeatELBv2(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
 	if CheckELBFlags(service) {
-		log.Printf("[%v] Heartbeating ELBv2: %s\n", service.Origin.ContainerID, GetUniqueID(*registration))
+		log.Printf("Heartbeating ELBv2: %s\n", GetUniqueID(*registration))
 		elbReg := setRegInfo(service, registration)
 		if elbReg != nil {
 			err := client.HeartBeatInstance(elbReg)
 			return err
 		}
 	}
-	return fmt.Errorf("[%v] unable to heartbeat ELBv2. ", service.Origin.ContainerID)
+	return fmt.Errorf("unable to heartbeat ELBv2. %s", GetUniqueID(*registration))
 }
