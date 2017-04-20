@@ -149,7 +149,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	r2 := rand.New(seed)
 	random := r2.Intn(5000)
 	period := time.Millisecond * time.Duration(random)
-	log.Printf("Waiting for %v", period)
+	log.Printf("Waiting for %v on ELBv2 lookup to avoid throttling.", period)
 	time.Sleep(period)
 
 	svc, err := getSession()
