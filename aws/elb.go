@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"reflect"
 	"strconv"
-	"sync"
 	"time"
 
 	awssdk "github.com/aws/aws-sdk-go/aws"
@@ -27,11 +26,6 @@ type LBInfo struct {
 type lookupValues struct {
 	InstanceID string
 	Port       int64
-}
-
-type cacheEntry struct {
-	*sync.Mutex
-	lb *LBInfo
 }
 
 var defExpirationTime = 10 * time.Second
