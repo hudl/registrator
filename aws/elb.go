@@ -3,6 +3,7 @@ package aws
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"reflect"
 	"strconv"
 	"time"
@@ -123,6 +124,9 @@ func getTargetGroupsPage(svc *elbv2.ELBV2, marker *string) (*elbv2.DescribeTarge
 func GetELBV2ForContainer(containerID string, instanceID string, port int64) (lbinfo *LBInfo, err error) {
 	i := lookupValues{InstanceID: instanceID, Port: port}
 	out, err := getAndCache(containerID, i, getLB, gocache.NoExpiration)
+	if out == nil || err != nil {
+		return nil, err
+	}
 	ret, _ := out.(*LBInfo)
 	return ret, err
 }
@@ -139,6 +143,14 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	var lbPort *int64
 	var tgArn string
 	info := &LBInfo{}
+
+	// Small random wait to reduce risk of throttling
+	seed := rand.NewSource(time.Now().UnixNano())
+	r2 := rand.New(seed)
+	random := r2.Intn(5000)
+	period := time.Millisecond * time.Duration(random)
+	log.Printf("Waiting for %v", period)
+	time.Sleep(period)
 
 	svc, err := getSession()
 	if err != nil {
@@ -343,10 +355,13 @@ func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, cl
 			err := client.ReregisterInstance(elbReg)
 			return err
 		}
-		for i := 1; i == 3; i++ {
+		for i := 1; i < 4; i++ {
 			// If there's no ELBv2 data, we need to retry a couple of times, as it takes a little while to propogate target group membership
 			// To avoid any wait, the endpoints can be specified manually as eureka_elbv2_hostname and eureka_elbv2_port vars
-			period := (time.Second * time.Duration(defExpirationTime+1) * time.Duration(i))
+			seed := rand.NewSource(time.Now().UnixNano())
+			r2 := rand.New(seed)
+			random := r2.Intn(5000)
+			period := time.Duration(time.Millisecond*time.Duration(random)) + time.Duration(defExpirationTime*time.Duration(i))
 			log.Printf("Retrying retrieval of ELBv2 data, attempt %v/3 - Waiting for %v seconds", i, period)
 			time.Sleep(period)
 			elbReg = setRegInfo(service, registration)
@@ -356,7 +371,7 @@ func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, cl
 			}
 		}
 	}
-	return fmt.Errorf("[%v] unable to register ELBv2", service.Origin.ContainerID)
+	return fmt.Errorf("unable to register ELBv2: %v", GetUniqueID(*registration))
 }
 
 // HeartbeatELBv2 - Heartbeat an ELB registration
