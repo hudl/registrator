@@ -149,7 +149,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	// other way to retrieve a TG via instance/port with current API
 
 	out1, err := getAndCache("tg", svc, getAllTargetGroups, defExpirationTime)
-	if err != nil || tgslice == nil {
+	if err != nil || out1 == nil {
 		message := fmt.Errorf("Failed to retrieve Target Groups: %s", err)
 		return nil, message
 	}
