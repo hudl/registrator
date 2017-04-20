@@ -346,7 +346,7 @@ func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, cl
 		for i := 1; i == 3; i++ {
 			// If there's no ELBv2 data, we need to retry a couple of times, as it takes a little while to propogate target group membership
 			// To avoid any wait, the endpoints can be specified manually as eureka_elbv2_hostname and eureka_elbv2_port vars
-			period := (time.Second * time.Duration(10) * time.Duration(i))
+			period := (time.Second * time.Duration(defExpirationTime+1) * time.Duration(i))
 			log.Printf("[%v] Retrying retrieval of ELBv2 data, attempt %v/3 - Waiting for %v seconds", service.Origin.ContainerID, i, period)
 			time.Sleep(period)
 			elbReg = setRegInfo(service, registration)
