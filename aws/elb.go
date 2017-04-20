@@ -3,7 +3,6 @@ package aws
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"reflect"
 	"strconv"
 	"time"
@@ -43,7 +42,7 @@ func getAndCache(key string, input any, f any, cacheTime time.Duration) (any, er
 
 	result, found := generalCache.Get(key)
 	if !found {
-		log.Printf("Key %v not cached.  Caching for %v", key, cacheTime)
+		//log.Printf("Key %v not cached.  Caching for %v", key, cacheTime)
 		caller := vf.Call([]reflect.Value{vinput})
 		output := caller[0].Interface()
 		err, _ := caller[1].Interface().(error)
@@ -60,8 +59,6 @@ func getAndCache(key string, input any, f any, cacheTime time.Duration) (any, er
 func RemoveLBCache(key string) {
 	generalCache.Delete(key)
 }
-
-var registrations = make(map[string]bool)
 
 // Get a session to AWS API
 func getSession() (*elbv2.ELBV2, error) {
@@ -141,15 +138,6 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	var lbPort *int64
 	var tgArn string
 	info := &LBInfo{}
-
-	// We need to have small random wait here, between 5 and 20s, because it takes a little while for new containers to appear in target groups
-	// To avoid any wait, the endpoints can be specified manually as eureka_elbv2_hostname and eureka_elbv2_port vars
-	seed := rand.NewSource(time.Now().UnixNano())
-	r2 := rand.New(seed)
-	random := r2.Intn(15000)
-	period := (time.Second * time.Duration(5)) + (time.Duration(random) * time.Millisecond)
-	log.Printf("Waiting for %v seconds", period)
-	time.Sleep(period)
 
 	svc, err := getSession()
 	if err != nil {
@@ -254,7 +242,7 @@ func CheckELBFlags(service *bridge.Service) bool {
 	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" {
 		v, err := strconv.ParseUint(service.Attrs["eureka_elbv2_port"], 10, 16)
 		if err != nil {
-			log.Printf("eureka: eureka_elbv2_port must be valid 16-bit unsigned int, was %v : %s", v, err)
+			log.Printf("[%v] eureka_elbv2_port must be valid 16-bit unsigned int, was %v : %s", service.Origin.ContainerID, v, err)
 			hasExplicit = false
 		}
 		hasExplicit = true
@@ -264,7 +252,7 @@ func CheckELBFlags(service *bridge.Service) bool {
 	if service.Attrs["eureka_lookup_elbv2_endpoint"] != "" {
 		v, err := strconv.ParseBool(service.Attrs["eureka_lookup_elbv2_endpoint"])
 		if err != nil {
-			log.Printf("eureka: eureka_lookup_elbv2_endpoint must be valid boolean, was %v : %s", v, err)
+			log.Printf("[%v] eureka_lookup_elbv2_endpoint must be valid boolean, was %v : %s", service.Origin.ContainerID, v, err)
 			useLookup = false
 		}
 		useLookup = v
@@ -282,7 +270,7 @@ func CheckELBOnlyReg(service *bridge.Service) bool {
 	if service.Attrs["eureka_elbv2_only_registration"] != "" {
 		v, err := strconv.ParseBool(service.Attrs["eureka_elbv2_only_registration"])
 		if err != nil {
-			log.Printf("eureka: eureka_elbv2_only_registration must be valid boolean, was %v : %s", v, err)
+			log.Printf("[%v] eureka_elbv2_only_registration must be valid boolean, was %v : %s", service.Origin.ContainerID, v, err)
 			return true
 		}
 		return v
@@ -304,7 +292,7 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 
 	// We've been given the ELB endpoint, so use this
 	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" {
-		log.Printf("Found ELBv2 hostname=%v and port=%v options, using these.", service.Attrs["eureka_elbv2_hostname"], service.Attrs["eureka_elbv2_port"])
+		log.Printf("[%v] found ELBv2 hostname=%v and port=%v options, using these.", service.Origin.ContainerID, service.Attrs["eureka_elbv2_hostname"], service.Attrs["eureka_elbv2_port"])
 		registration.Port, _ = strconv.Atoi(service.Attrs["eureka_elbv2_port"])
 		registration.HostName = service.Attrs["eureka_elbv2_hostname"]
 		registration.IPAddr = ""
@@ -316,7 +304,7 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 		elbMetadata, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port))
 
 		if err != nil {
-			log.Printf("Unable to find associated ELBv2 for: %s, Error: %s\n", registration.HostName, err)
+			log.Printf("[%v] Unable to find associated ELBv2 for: %s, Error: %s\n", service.Origin.ContainerID, registration.HostName, err)
 			return nil
 		}
 
@@ -349,28 +337,37 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 // This will mean traffic is directed to the ALB rather than directly to containers
 func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
 	if CheckELBFlags(service) {
-		log.Printf("Found ELBv2 flags, will attempt to register LB for: %s\n", GetUniqueID(*registration))
+		log.Printf("[%v] Found ELBv2 flags, will attempt to register LB for: %s\n", service.Origin.ContainerID, GetUniqueID(*registration))
 		elbReg := setRegInfo(service, registration)
 		if elbReg != nil {
 			err := client.ReregisterInstance(elbReg)
-			if err == nil {
-				registrations[service.Origin.ContainerID] = true
+			return err
+		}
+		for i := 1; i == 3; i++ {
+			// If there's no ELBv2 data, we need to retry a couple of times, as it takes a little while to propogate target group membership
+			// To avoid any wait, the endpoints can be specified manually as eureka_elbv2_hostname and eureka_elbv2_port vars
+			period := (time.Second * time.Duration(10) * time.Duration(i))
+			log.Printf("[%v] Retrying retrieval of ELBv2 data, attempt %v/3 - Waiting for %v seconds", service.Origin.ContainerID, i, period)
+			time.Sleep(period)
+			elbReg = setRegInfo(service, registration)
+			if elbReg != nil {
+				err := client.ReregisterInstance(elbReg)
+				return err
 			}
-			return nil
 		}
 	}
-	return fmt.Errorf("unable to register ELBv2 - flags are not set")
+	return fmt.Errorf("[%v] unable to register ELBv2", service.Origin.ContainerID)
 }
 
 // HeartbeatELBv2 - Heartbeat an ELB registration
 func HeartbeatELBv2(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
 	if CheckELBFlags(service) {
-		log.Printf("Heartbeating ELBv2: %s\n", GetUniqueID(*registration))
+		log.Printf("[%v] Heartbeating ELBv2: %s\n", service.Origin.ContainerID, GetUniqueID(*registration))
 		elbReg := setRegInfo(service, registration)
 		if elbReg != nil {
 			err := client.HeartBeatInstance(elbReg)
 			return err
 		}
 	}
-	return fmt.Errorf("unable to heartbeat ELBv2 - flags are not set")
+	return fmt.Errorf("[%v] unable to heartbeat ELBv2. ", service.Origin.ContainerID)
 }
