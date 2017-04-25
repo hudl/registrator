@@ -179,7 +179,7 @@ func (r *EurekaAdapter) Deregister(service *bridge.Service) error {
 		aws.RemoveLBCache(service.Origin.ContainerID)
 	}
 	// Don't deregister ALB registrations.  Just leave them to expire if there are no heartbeats
-	if !aws.CheckELBOnlyReg(service) {
+	if !aws.CheckELBFlags(service) {
 		log.Println("Deregistering", GetUniqueID(*registration))
 		err := r.client.DeregisterInstance(registration)
 		return err

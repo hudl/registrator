@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 	"github.com/gliderlabs/registrator/bridge"
 	fargo "github.com/hudl/fargo"
+	gocache "github.com/patrickmn/go-cache"
 )
 
 // LBInfo represents a ELBv2 endpoint
@@ -21,8 +23,57 @@ type LBInfo struct {
 	Port    int64
 }
 
-var lbCache = make(map[string]*LBInfo)
-var registrations = make(map[string]bool)
+type lookupValues struct {
+	InstanceID string
+	Port       int64
+}
+
+const defExpirationTime = 10 * time.Second
+
+var generalCache = gocache.New(defExpirationTime, defExpirationTime)
+
+type any interface{}
+
+//
+// Provide a general caching mechanism for any function that lasts a few seconds.
+//
+func getAndCache(key string, input any, f any, cacheTime time.Duration) (any, error) {
+
+	vf := reflect.ValueOf(f)
+	vinput := reflect.ValueOf(input)
+
+	result, found := generalCache.Get(key)
+	if !found {
+		//log.Printf("Key %v not cached.  Caching for %v", key, cacheTime)
+		caller := vf.Call([]reflect.Value{vinput})
+		output := caller[0].Interface()
+		err, _ := caller[1].Interface().(error)
+		if err == nil {
+			generalCache.Set(key, output, cacheTime)
+			return output, nil
+		}
+		return nil, err
+	}
+	return result, nil
+}
+
+// RemoveLBCache : Delete any cache of load balancer for this containerID
+func RemoveLBCache(key string) {
+	generalCache.Delete(key)
+}
+
+// Get a session to AWS API
+func getSession() (*elbv2.ELBV2, error) {
+	sess, err := session.NewSession()
+	if err != nil {
+		message := fmt.Errorf("Failed to create session connecting to AWS: %s", err)
+		return nil, message
+	}
+
+	// Need to set the region here - we'll get it from instance metadata
+	awsMetadata := GetMetadata()
+	return elbv2.New(sess, awssdk.NewConfig().WithRegion(awsMetadata.Region)), nil
+}
 
 // Helper function to retrieve all target groups
 func getAllTargetGroups(svc *elbv2.ELBV2) ([]*elbv2.DescribeTargetGroupsOutput, error) {
@@ -57,6 +108,7 @@ func getTargetGroupsPage(svc *elbv2.ELBV2, marker *string) (*elbv2.DescribeTarge
 		PageSize: awssdk.Int64(400),
 		Marker:   marker,
 	}
+
 	tg, e := svc.DescribeTargetGroups(params)
 
 	if e != nil {
@@ -68,50 +120,56 @@ func getTargetGroupsPage(svc *elbv2.ELBV2, marker *string) (*elbv2.DescribeTarge
 
 // GetELBV2ForContainer returns an LBInfo struct with the load balancer DNS name and listener port for a given instanceId and port
 // if an error occurs, or the target is not found, an empty LBInfo is returned.
-// Return the DNS:port pair as an identifier to put in the container's registration metadata
 // Pass it the instanceID for the docker host, and the the host port to lookup the associated ELB.
-// useCache parameter, if true, will retrieve ELBv2 details from memory, rather than calling AWS.
-// this is only really safe to use for heartbeat calls, as details can change dynamically
-func GetELBV2ForContainer(containerID string, instanceID string, port int64, useCache bool) (lbinfo *LBInfo, err error) {
-
-	// Retrieve from basic cache (for heartbeats)
-	cacheKey := containerID
-	if val, ok := lbCache[cacheKey]; ok && useCache {
-		log.Println("Retrieving value from cache.")
-		return val, nil
+//
+func GetELBV2ForContainer(containerID string, instanceID string, port int64) (lbinfo *LBInfo, err error) {
+	i := lookupValues{InstanceID: instanceID, Port: port}
+	out, err := getAndCache(containerID, i, getLB, gocache.NoExpiration)
+	if out == nil || err != nil {
+		return nil, err
 	}
+	ret, _ := out.(*LBInfo)
+	return ret, err
+}
 
-	// We need to have small random wait here, because it takes a little while for new containers to appear in target groups
-	// to avoid any wait, the endpoints can be specified manually as eureka_elbv2_hostname and eureka_elbv2_port vars
-	rand.NewSource(time.Now().UnixNano())
-	period := time.Second * time.Duration(rand.Intn(10)+20)
-	time.Sleep(period)
+//
+// Does the real work of retrieving the load balancer details, given a lookupValues struct.
+// Note: This function uses caching extensively to reduce the burden on the AWS API when called from multiple goroutines
+//
+func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
+	instanceID := l.InstanceID
+	port := l.Port
 
 	var lbArns []*string
 	var lbPort *int64
 	var tgArn string
 	info := &LBInfo{}
 
-	sess, err := session.NewSession()
-	if err != nil {
-		message := fmt.Errorf("Failed to create session connecting to AWS: %s", err)
-		return nil, message
-	}
+	// Small random wait to reduce risk of throttling
+	seed := rand.NewSource(time.Now().UnixNano())
+	r2 := rand.New(seed)
+	random := r2.Intn(5000)
+	period := time.Millisecond * time.Duration(random)
+	log.Printf("Waiting for %v on ELBv2 lookup to avoid throttling.", period)
+	time.Sleep(period)
 
-	// Need to set the region here - we'll get it from instance metadata
-	awsMetadata := GetMetadata()
-	svc := elbv2.New(sess, awssdk.NewConfig().WithRegion(awsMetadata.Region))
+	svc, err := getSession()
+	if err != nil {
+		return nil, err
+	}
 
 	// TODO Note: There could be thousands of these, and we need to check them all.  Seems to be no
 	// other way to retrieve a TG via instance/port with current API
-	tgslice, err := getAllTargetGroups(svc)
-	if err != nil || tgslice == nil {
+
+	out1, err := getAndCache("tg", svc, getAllTargetGroups, defExpirationTime)
+	if err != nil || out1 == nil {
 		message := fmt.Errorf("Failed to retrieve Target Groups: %s", err)
 		return nil, message
 	}
+	tgslice, _ := out1.([]*elbv2.DescribeTargetGroupsOutput)
 
 	// Check each target group's target list for a matching port and instanceID
-	// TODO Assumption: that that there is only one LB for the target group (though the data structure allows more)
+	// Assumption: that that there is only one LB for the target group (though the data structure allows more)
 	for _, tgs := range tgslice {
 		for _, tg := range tgs.TargetGroups {
 
@@ -119,12 +177,12 @@ func GetELBV2ForContainer(containerID string, instanceID string, port int64, use
 				TargetGroupArn: awssdk.String(*tg.TargetGroupArn),
 			}
 
-			tarH, err := svc.DescribeTargetHealth(thParams)
-			if err != nil {
+			out2, err := getAndCache(*thParams.TargetGroupArn, thParams, svc.DescribeTargetHealth, defExpirationTime)
+			if err != nil || out2 == nil {
 				log.Printf("An error occurred using DescribeTargetHealth: %s \n", err.Error())
 				return nil, err
 			}
-
+			tarH, _ := out2.(*elbv2.DescribeTargetHealthOutput)
 			for _, thd := range tarH.TargetHealthDescriptions {
 				if *thd.Target.Port == port && *thd.Target.Id == instanceID {
 					lbArns = tg.LoadBalancerArns
@@ -147,11 +205,12 @@ func GetELBV2ForContainer(containerID string, instanceID string, port int64, use
 	lsnrParams := &elbv2.DescribeListenersInput{
 		LoadBalancerArn: lbArns[0],
 	}
-	lnrData, err := svc.DescribeListeners(lsnrParams)
-	if err != nil {
+	out3, err := getAndCache("lsnr_"+*lsnrParams.LoadBalancerArn, lsnrParams, svc.DescribeListeners, defExpirationTime)
+	if err != nil || out3 == nil {
 		log.Printf("An error occurred using DescribeListeners: %s \n", err.Error())
 		return nil, err
 	}
+	lnrData, _ := out3.(*elbv2.DescribeListenersOutput)
 	for _, listener := range lnrData.Listeners {
 		for _, act := range listener.DefaultActions {
 			if *act.TargetGroupArn == tgArn {
@@ -170,25 +229,17 @@ func GetELBV2ForContainer(containerID string, instanceID string, port int64, use
 	lbParams := &elbv2.DescribeLoadBalancersInput{
 		LoadBalancerArns: lbArns,
 	}
-	lbData, err := svc.DescribeLoadBalancers(lbParams)
-	if err != nil {
+	out4, err := getAndCache("lb_"+*lbParams.LoadBalancerArns[0], lbParams, svc.DescribeLoadBalancers, defExpirationTime)
+	if err != nil || out4 == nil {
 		log.Printf("An error occurred using DescribeLoadBalancers: %s \n", err.Error())
 		return nil, err
 	}
+	lbData, _ := out4.(*elbv2.DescribeLoadBalancersOutput)
 	log.Printf("LB Endpoint for Instance:%v Port:%v, Target Group:%v, is: %s:%s\n", instanceID, port, tgArn, *lbData.LoadBalancers[0].DNSName, strconv.FormatInt(*lbPort, 10))
 
 	info.DNSName = *lbData.LoadBalancers[0].DNSName
 	info.Port = *lbPort
-
-	// Add to a basic cache for heartbeats
-	lbCache[cacheKey] = info
-
 	return info, nil
-}
-
-// RemoveLBCache : Delete any cache of load balancer for this containerID
-func RemoveLBCache(containerID string) {
-	delete(lbCache, containerID)
 }
 
 // CheckELBFlags - Helper function to check if the correct config flags are set to use ELBs
@@ -204,7 +255,7 @@ func CheckELBFlags(service *bridge.Service) bool {
 	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" {
 		v, err := strconv.ParseUint(service.Attrs["eureka_elbv2_port"], 10, 16)
 		if err != nil {
-			log.Printf("eureka: eureka_elbv2_port must be valid 16-bit unsigned int, was %v : %s", v, err)
+			log.Printf("eureka_elbv2_port must be valid 16-bit unsigned int, was %v : %s", v, err)
 			hasExplicit = false
 		}
 		hasExplicit = true
@@ -214,7 +265,7 @@ func CheckELBFlags(service *bridge.Service) bool {
 	if service.Attrs["eureka_lookup_elbv2_endpoint"] != "" {
 		v, err := strconv.ParseBool(service.Attrs["eureka_lookup_elbv2_endpoint"])
 		if err != nil {
-			log.Printf("eureka: eureka_lookup_elbv2_endpoint must be valid boolean, was %v : %s", v, err)
+			log.Printf("eureka_lookup_elbv2_endpoint must be valid boolean, was %v : %s", v, err)
 			useLookup = false
 		}
 		useLookup = v
@@ -226,13 +277,13 @@ func CheckELBFlags(service *bridge.Service) bool {
 	return false
 }
 
-// CheckELBOnly - Helper function to check if only the ELB should be registered (no containers)
+// CheckELBOnlyReg - Helper function to check if only the ELB should be registered (no containers)
 func CheckELBOnlyReg(service *bridge.Service) bool {
 
 	if service.Attrs["eureka_elbv2_only_registration"] != "" {
 		v, err := strconv.ParseBool(service.Attrs["eureka_elbv2_only_registration"])
 		if err != nil {
-			log.Printf("eureka: eureka_elbv2_only_registration must be valid boolean, was %v : %s", v, err)
+			log.Printf("eureka_elbv2_only_registration must be valid boolean, was %v : %s", v, err)
 			return true
 		}
 		return v
@@ -240,21 +291,21 @@ func CheckELBOnlyReg(service *bridge.Service) bool {
 	return true
 }
 
-// Note: Helper function reimplemented here to avoid segfault calling it on fargo.Instance struct
+// GetUniqueID Note: Helper function reimplemented here to avoid segfault calling it on fargo.Instance struct
 func GetUniqueID(instance fargo.Instance) string {
 	return instance.HostName + "_" + strconv.Itoa(instance.Port)
 }
 
 // Helper function to alter registration info and add the ELBv2 endpoint
 // useCache parameter is passed to getELBV2ForContainer
-func setRegInfo(service *bridge.Service, registration *fargo.Instance, useCache bool) *fargo.Instance {
+func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.Instance {
 
 	awsMetadata := GetMetadata()
 	var elbEndpoint string
 
 	// We've been given the ELB endpoint, so use this
 	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" {
-		log.Printf("Found ELBv2 hostname=%v and port=%v options, using these.", service.Attrs["eureka_elbv2_hostname"], service.Attrs["eureka_elbv2_port"])
+		log.Printf("found ELBv2 hostname=%v and port=%v options, using these.", service.Attrs["eureka_elbv2_hostname"], service.Attrs["eureka_elbv2_port"])
 		registration.Port, _ = strconv.Atoi(service.Attrs["eureka_elbv2_port"])
 		registration.HostName = service.Attrs["eureka_elbv2_hostname"]
 		registration.IPAddr = ""
@@ -263,7 +314,7 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance, useCache 
 
 	} else {
 		// We don't have the ELB endpoint, so look it up.
-		elbMetadata, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port), useCache)
+		elbMetadata, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port))
 
 		if err != nil {
 			log.Printf("Unable to find associated ELBv2 for: %s, Error: %s\n", registration.HostName, err)
@@ -300,27 +351,40 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance, useCache 
 func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
 	if CheckELBFlags(service) {
 		log.Printf("Found ELBv2 flags, will attempt to register LB for: %s\n", GetUniqueID(*registration))
-		elbReg := setRegInfo(service, registration, false)
+		elbReg := setRegInfo(service, registration)
 		if elbReg != nil {
 			err := client.ReregisterInstance(elbReg)
-			if err == nil {
-				registrations[service.Origin.ContainerID] = true
+			return err
+		}
+		seed := rand.NewSource(time.Now().UnixNano())
+		r2 := rand.New(seed)
+		for i := 1; i < 4; i++ {
+			// If there's no ELBv2 data, we need to retry a couple of times, as it takes a little while to propogate target group membership
+			// To avoid any wait, the endpoints can be specified manually as eureka_elbv2_hostname and eureka_elbv2_port vars
+			random := r2.Intn(5000)
+			modifier := +time.Duration(time.Millisecond * 5000)
+			period := time.Duration(time.Millisecond*time.Duration(random)) + modifier + time.Duration(defExpirationTime*time.Duration(i))
+			log.Printf("Retrying retrieval of ELBv2 data, attempt %v/3 - Waiting for %v seconds", i, period)
+			time.Sleep(period)
+			elbReg = setRegInfo(service, registration)
+			if elbReg != nil {
+				err := client.ReregisterInstance(elbReg)
+				return err
 			}
-			return nil
 		}
 	}
-	return fmt.Errorf("unable to register ELBv2 - flags are not set")
+	return fmt.Errorf("unable to register ELBv2: %v", GetUniqueID(*registration))
 }
 
 // HeartbeatELBv2 - Heartbeat an ELB registration
 func HeartbeatELBv2(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
 	if CheckELBFlags(service) {
 		log.Printf("Heartbeating ELBv2: %s\n", GetUniqueID(*registration))
-		elbReg := setRegInfo(service, registration, true)
+		elbReg := setRegInfo(service, registration)
 		if elbReg != nil {
 			err := client.HeartBeatInstance(elbReg)
 			return err
 		}
 	}
-	return fmt.Errorf("unable to heartbeat ELBv2 - flags are not set")
+	return fmt.Errorf("unable to heartbeat ELBv2. %s", GetUniqueID(*registration))
 }

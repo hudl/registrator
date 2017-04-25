@@ -1,7 +1,9 @@
 NAME=registrator
 VERSION=$(shell cat VERSION)
+BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 DEV_RUN_OPTS ?= -ttl 60 -ttl-refresh 30 -require-label -ip 127.0.0.1  eureka://localhost:8090/eureka/v2
-RELEASE_TAG=761584570493.dkr.ecr.us-east-1.amazonaws.com/registrator
+PROD_RELEASE_TAG=761584570493.dkr.ecr.us-east-1.amazonaws.com/registrator:latest
+TEST_TAG=761584570493.dkr.ecr.us-east-1.amazonaws.com/registrator:$(BRANCH)
 
 dev:
 	docker kill reg_eureka; echo Stopped.
@@ -18,7 +20,11 @@ build:
 	docker build -t $(NAME):$(VERSION) .
 	docker save $(NAME):$(VERSION) | gzip -9 > build/$(NAME)_$(VERSION).tgz
 
+test:
+	docker build -t $(TEST_TAG) .
+	docker push $(TEST_TAG)
+
 release:
-	docker build -t $(RELEASE_TAG) .
-	docker push $(RELEASE_TAG)
+	docker build -t $(PROD_RELEASE_TAG) .
+	docker push $(PROD_RELEASE_TAG)
 
