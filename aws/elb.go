@@ -28,7 +28,8 @@ type lookupValues struct {
 	Port       int64
 }
 
-var defExpirationTime = 10 * time.Second
+const defExpirationTime = 10 * time.Second
+
 var generalCache = gocache.New(defExpirationTime, defExpirationTime)
 
 type any interface{}
@@ -355,11 +356,11 @@ func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, cl
 			err := client.ReregisterInstance(elbReg)
 			return err
 		}
+		seed := rand.NewSource(time.Now().UnixNano())
+		r2 := rand.New(seed)
 		for i := 1; i < 4; i++ {
 			// If there's no ELBv2 data, we need to retry a couple of times, as it takes a little while to propogate target group membership
 			// To avoid any wait, the endpoints can be specified manually as eureka_elbv2_hostname and eureka_elbv2_port vars
-			seed := rand.NewSource(time.Now().UnixNano())
-			r2 := rand.New(seed)
 			random := r2.Intn(5000)
 			modifier := +time.Duration(time.Millisecond * 5000)
 			period := time.Duration(time.Millisecond*time.Duration(random)) + modifier + time.Duration(defExpirationTime*time.Duration(i))
