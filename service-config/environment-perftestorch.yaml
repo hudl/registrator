@@ -5,3 +5,5 @@ infrastructure:
       docker_command: ["-ttl","30","-ttl-refresh","15","-require-label","eureka://localhost:8080/eureka/v2"]
     preferences:
       ecsCluster: t-marvel-perftest-orch
+      environment_variables:
+      - foo: bar
