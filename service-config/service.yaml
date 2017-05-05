@@ -1,4 +1,4 @@
-schema: 1.1.1
+schema: 1.2.0
 
 service:
   name:  registrator
@@ -9,6 +9,9 @@ infrastructure:
       cpu_units: 10
       soft_memory_limit: 128
       hard_memory_limit: 256
+      networking_mode: host
+      docker_labels:
+      - is-marvel: "false"
       log_paths:
       - sourceCategory: app_registrator
         pathExpression: /var/log/app_registrator/**
