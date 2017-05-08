@@ -1,4 +1,4 @@
-environment: thor-perftestorch
+environment: thor
 infrastructure:
   web:
     requirements:
