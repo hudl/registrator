@@ -1,0 +1,7 @@
+environment: thormaster
+infrastructure:
+  web:
+    requirements:
+      docker_command: ["-ttl","30","-ttl-refresh","15","-require-label","eureka://classic-eureka.vpc.thorhudl.com:8080/eureka/v2"]
+    preferences:
+      ecsCluster: t-marvel-ecs

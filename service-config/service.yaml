@@ -1,0 +1,46 @@
+schema: 1.2.0
+
+service:
+  name:  registrator
+  tribe: foundation
+infrastructure:
+  web:
+    requirements:
+      cpu_units: 10
+      soft_memory_limit: 128
+      hard_memory_limit: 256
+      networking_mode: host
+      docker_labels:
+      - is-marvel: "false"
+      log_paths:
+      - sourceCategory: app_registrator
+        pathExpression: /var/log/app_registrator/**
+        dateFormat: yyyy/MM/dd hh24:mi:ss
+      volumes:
+      - name: log
+        host_path: /var/log/app_registrator
+        container_path: /logs
+        read_only: false
+      - name: root
+        host_path: /
+        container_path: /rootfs
+        read_only: true
+      - name: var_run
+        host_path: /var/run
+        container_path: /var/run
+        read_only: false
+      - name: sys
+        host_path: /sys
+        container_path: /sys
+        read_only: true    
+      - name: var_lib_docker
+        host_path: /var/lib/docker/
+        container_path: /var/lib/docker/
+        read_only: true
+      - name: docker_socket
+        host_path: /var/run/docker.sock
+        container_path: /tmp/docker.sock
+        read_only: true
+    iam:
+      managed_policies:
+        - hudl-webserver-generic

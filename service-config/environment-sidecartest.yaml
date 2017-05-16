@@ -1,0 +1,7 @@
+environment: sidecartest
+infrastructure:
+  web:
+    requirements:
+      docker_command: ["-ttl","30","-ttl-refresh","15","-require-label","eureka://registrator-testing.thorhudl.com:8080/eureka/v2"]
+    preferences:
+      ecsCluster: t-marvel-perftest-orch
