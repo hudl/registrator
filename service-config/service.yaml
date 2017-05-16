@@ -24,7 +24,7 @@ infrastructure:
       - name: root
         host_path: /
         container_path: /rootfs
-        read_only: false
+        read_only: true
       - name: var_run
         host_path: /var/run
         container_path: /var/run
@@ -32,19 +32,15 @@ infrastructure:
       - name: sys
         host_path: /sys
         container_path: /sys
-        read_only: false    
+        read_only: true    
       - name: var_lib_docker
         host_path: /var/lib/docker/
         container_path: /var/lib/docker/
-        read_only: false
+        read_only: true
       - name: docker_socket
         host_path: /var/run/docker.sock
         container_path: /tmp/docker.sock
-        read_only: false
-      - name: etc_sumo
-        host_path: /etc/sumo
-        container_path: /etc/sumo
-        read_only: false
+        read_only: true
     iam:
       managed_policies:
         - hudl-webserver-generic
