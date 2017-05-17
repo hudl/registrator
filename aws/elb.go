@@ -32,7 +32,7 @@ type lookupValues struct {
 const DEFAULT_EXP_TIME = 10 * time.Second
 
 var generalCache = gocache.New(DEFAULT_EXP_TIME, DEFAULT_EXP_TIME)
-var previousStatus fargo.StatusType
+var previousStatus = fargo.UNKNOWN
 var refreshInterval int
 
 type any interface{}
@@ -134,8 +134,7 @@ func GetELBV2ForContainer(containerID string, instanceID string, port int64) (lb
 	return ret, err
 }
 
-// GetHealthyTargets Get a list of healthy targets given a target groun ARN.
-// This data is cached for a period of just below 2 heartbeat intervals.
+// GetHealthyTargets Get a list of healthy targets given a target group ARN.
 func GetHealthyTargets(tgArn string) (thds []*elbv2.TargetHealthDescription, err error) {
 	var healthCheckCacheTime time.Duration
 
@@ -380,14 +379,18 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 	}
 
 	// Test for at least one healthy container in the target group.  We want to mark the ALB as down if there isn't one yet
-	thList, err := GetHealthyTargets(elbMetadata.TargetGroupArn)
-	if err != nil {
-		log.Printf("Unable to find list of healthy targets for: %s, Error: %s\n", registration.HostName, err)
-		return nil
-	}
-	if len(thList) == 0 {
-		log.Printf("Waiting on a healthy target in TG: %s - currently all UNHEALTHY.  This is normal for a new service which just started.  It may indicate a problem otherwise.", elbMetadata.TargetGroupArn)
-		registration.Status = fargo.DOWN
+	if previousStatus == fargo.UNKNOWN || previousStatus == fargo.STARTING {
+		thList, err := GetHealthyTargets(elbMetadata.TargetGroupArn)
+		if err != nil {
+			log.Printf("Unable to find list of healthy targets for: %s, Error: %s\n", registration.HostName, err)
+			return nil
+		}
+		if len(thList) == 0 {
+			log.Printf("Waiting on a healthy target in TG: %s - currently all UNHEALTHY.  This is normal for a new service which is starting up.  It may indicate a problem otherwise.", elbMetadata.TargetGroupArn)
+			registration.Status = fargo.STARTING
+		} else {
+			registration.Status = fargo.UP
+		}
 	}
 
 	registration.SetMetadataString("has-elbv2", "true")
@@ -439,7 +442,7 @@ func HeartbeatELBv2(service *bridge.Service, registration *fargo.Instance, clien
 			return err
 		}
 		// If the status of the ELB has changed, then reregister it as UP
-		if elbReg.Status == fargo.UP && previousStatus == fargo.DOWN {
+		if elbReg.Status == fargo.UP && previousStatus != fargo.UP {
 			err := client.ReregisterInstance(elbReg)
 			return err
 		}
