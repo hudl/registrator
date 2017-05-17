@@ -420,6 +420,7 @@ func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, cl
 			time.Sleep(period)
 			elbReg = setRegInfo(service, registration)
 			if elbReg != nil {
+				previousStatus = elbReg.Status
 				err := client.ReregisterInstance(elbReg)
 				return err
 			}
