@@ -1,8 +1,9 @@
 FROM alpine:3.5
-ENTRYPOINT ["/bin/registrator"]
+ENTRYPOINT ["/bin/registrator", "2>&1", "|", "tee", "-a", "/logs/registrator-$HOSTNAME.log"]
 
+CMD mkdir /logs
 COPY . /go/src/github.com/gliderlabs/registrator
-RUN apk --no-cache add -t build-deps build-base go git \
+RUN apk --no-cache add -t build-deps build-base go coreutils git \
 	&& apk --no-cache add ca-certificates \
 	&& cd /go/src/github.com/gliderlabs/registrator \
 	&& export GOPATH=/go \
