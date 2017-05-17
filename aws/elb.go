@@ -151,7 +151,7 @@ func GetHealthyTargets(tgArn string) (thds []*elbv2.TargetHealthDescription, err
 	if refreshInterval != 0 {
 		healthCheckCacheTime = (time.Duration(refreshInterval) * time.Second) - (1 * time.Second)
 	} else {
-		healthCheckCacheTime = time.Second * 29
+		healthCheckCacheTime = time.Second * 14
 	}
 	out2, err := getAndCache(*thParams.TargetGroupArn, thParams, svc.DescribeTargetHealth, healthCheckCacheTime)
 	if err != nil || out2 == nil {
