@@ -134,9 +134,25 @@ func GetELBV2ForContainer(containerID string, instanceID string, port int64) (lb
 	return ret, err
 }
 
-// GetHealthyTargets Get a list of healthy targets given a target group ARN.
+// GetHealthyTargets Get a list of healthy targets given a target group ARN.  Cache for default interval
 func GetHealthyTargets(tgArn string) (thds []*elbv2.TargetHealthDescription, err error) {
 	var healthCheckCacheTime time.Duration
+	if refreshInterval != 0 {
+		healthCheckCacheTime = (time.Duration(refreshInterval) * time.Second) - (1 * time.Second)
+	} else {
+		healthCheckCacheTime = DEFAULT_EXP_TIME
+	}
+
+	out, err := getAndCache(tgArn, tgArn, getHealthyTargets, healthCheckCacheTime)
+	if out == nil || err != nil {
+		return nil, err
+	}
+	ret, _ := out.([]*elbv2.TargetHealthDescription)
+	return ret, err
+}
+
+// Actual func outside of caching mechanism
+func getHealthyTargets(tgArn string) (ths []*elbv2.TargetHealthDescription, err error) {
 
 	svc, err := getSession()
 	if err != nil {
@@ -147,18 +163,12 @@ func GetHealthyTargets(tgArn string) (thds []*elbv2.TargetHealthDescription, err
 		TargetGroupArn: awssdk.String(tgArn),
 	}
 
-	if refreshInterval != 0 {
-		healthCheckCacheTime = (time.Duration(refreshInterval) * time.Second) - (1 * time.Second)
-	} else {
-		healthCheckCacheTime = DEFAULT_EXP_TIME
-	}
-	out2, err := getAndCache(*thParams.TargetGroupArn, thParams, svc.DescribeTargetHealth, healthCheckCacheTime)
-	if err != nil || out2 == nil {
+	tarH, err := svc.DescribeTargetHealth(thParams)
+	if err != nil || tarH == nil {
 		log.Printf("An error occurred using DescribeTargetHealth: %s \n", err.Error())
 		return nil, err
 	}
 
-	tarH, _ := out2.(*elbv2.DescribeTargetHealthOutput)
 	var healthyTargets []*elbv2.TargetHealthDescription
 	for _, thd := range tarH.TargetHealthDescriptions {
 		if *thd.TargetHealth.State == "healthy" {
