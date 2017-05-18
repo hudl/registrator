@@ -1,5 +1,5 @@
 FROM alpine:3.5
-ENTRYPOINT ["/bin/registrator", "2>&1", "|", "tee", "-a", "/logs/registrator-$HOSTNAME.log"]
+ENTRYPOINT ["/bin/registrator"]
 
 CMD mkdir /logs
 COPY . /go/src/github.com/gliderlabs/registrator
