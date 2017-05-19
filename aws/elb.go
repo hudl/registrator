@@ -369,12 +369,11 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 		// We don't have the ELB endpoint, so look it up.
 
 		elbMetadata1, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port))
-		elbMetadata = *elbMetadata1
-		log.Printf("elb data: %+v", elbMetadata.TargetGroupArn)
 		if err != nil {
 			log.Printf("Unable to find associated ELBv2 for: %s, Error: %s\n", registration.HostName, err)
 			return nil
 		}
+		elbMetadata = *elbMetadata1
 
 		elbStrPort := strconv.FormatInt(elbMetadata.Port, 10)
 		elbEndpoint = elbMetadata.DNSName + "_" + elbStrPort
