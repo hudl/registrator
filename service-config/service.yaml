@@ -5,7 +5,7 @@ service:
   tribe: foundation
 infrastructure:
   web:
-    preference:
+    preferences:
       environment_variables:
       - SERVICE_EUREKA_lookup_elbv2_endpoint: false
       - SERVICE_REGISTER: true
