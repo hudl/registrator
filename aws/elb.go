@@ -291,7 +291,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 
 // CheckELBFlags - Helper function to check if the correct config flags are set to use ELBs
 // We accept two possible configurations here - either eureka_lookup_elbv2_endpoint can be set,
-// for automatic lookup, or eureka_elbv2_hostname and eureka_elbv2_port can be set manually
+// for automatic lookup, or eureka_elbv2_hostname, eureka_elbv2_port and eureka_elbv2_targetgroup can be set manually
 // to avoid the 10-20s wait for lookups
 func CheckELBFlags(service *bridge.Service) bool {
 
@@ -299,7 +299,7 @@ func CheckELBFlags(service *bridge.Service) bool {
 	var hasExplicit bool
 	var useLookup bool
 
-	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" {
+	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" && service.Attrs["eureka_elbv2_targetgroup"] != "" {
 		v, err := strconv.ParseUint(service.Attrs["eureka_elbv2_port"], 10, 16)
 		if err != nil {
 			log.Printf("eureka_elbv2_port must be valid 16-bit unsigned int, was %v : %s", v, err)
@@ -349,21 +349,28 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 
 	awsMetadata := GetMetadata()
 	var elbEndpoint string
-	var elbMetadata *LBInfo
+	var elbMetadata LBInfo
 
 	// We've been given the ELB endpoint, so use this
-	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" {
-		log.Printf("found ELBv2 hostname=%v and port=%v options, using these.", service.Attrs["eureka_elbv2_hostname"], service.Attrs["eureka_elbv2_port"])
+	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" && service.Attrs["eureka_elbv2_targetgroup"] != "" {
+		log.Printf("found ELBv2 hostname=%v, port=%v and TG=%v options, using these.", service.Attrs["eureka_elbv2_hostname"], service.Attrs["eureka_elbv2_port"], service.Attrs["eureka_elbv2_targetgroup"])
 		registration.Port, _ = strconv.Atoi(service.Attrs["eureka_elbv2_port"])
 		registration.HostName = service.Attrs["eureka_elbv2_hostname"]
 		registration.IPAddr = ""
 		registration.VipAddress = ""
 		elbEndpoint = service.Attrs["eureka_elbv2_hostname"] + "_" + service.Attrs["eureka_elbv2_port"]
+		elbMetadata = LBInfo{
+			Port:           int64(registration.Port),
+			DNSName:        registration.HostName,
+			TargetGroupArn: service.Attrs["eureka_elbv2_targetgroup"],
+		}
 
 	} else {
 		// We don't have the ELB endpoint, so look it up.
-		elbMetadata, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port))
 
+		elbMetadata1, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port))
+		elbMetadata = *elbMetadata1
+		log.Printf("elb data: %+v", elbMetadata.TargetGroupArn)
 		if err != nil {
 			log.Printf("Unable to find associated ELBv2 for: %s, Error: %s\n", registration.HostName, err)
 			return nil
@@ -375,7 +382,7 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 		registration.IPAddr = ""
 		registration.HostName = elbMetadata.DNSName
 	}
-
+	log.Printf("elb data 2: %+v", elbMetadata.TargetGroupArn)
 	if CheckELBOnlyReg(service) {
 		// Remove irrelevant metadata from an ELB only registration
 		registration.DataCenterInfo.Metadata = fargo.AmazonMetadataType{
