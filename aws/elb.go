@@ -218,6 +218,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	// Assumption: that that there is only one LB for the target group (though the data structure allows more)
 	for _, tgs := range tgslice {
 		for _, tg := range tgs.TargetGroups {
+			log.Printf("Checking target group: %v", *tg.TargetGroupArn)
 
 			thParams := &elbv2.DescribeTargetHealthInput{
 				TargetGroupArn: awssdk.String(*tg.TargetGroupArn),
@@ -235,6 +236,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 			}
 			for _, thd := range tarH.TargetHealthDescriptions {
 				if *thd.Target.Port == port && *thd.Target.Id == instanceID {
+					log.Printf("Target matched!")
 					lbArns = tg.LoadBalancerArns
 					tgArn = *tg.TargetGroupArn
 					break
