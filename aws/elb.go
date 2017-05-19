@@ -373,7 +373,7 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 		// We don't have the ELB endpoint, so look it up.
 
 		elbMetadata1, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port))
-		if err != nil {
+		if err != nil || elbMetadata1 != nil {
 			log.Printf("Unable to find associated ELBv2 for: %s, Error: %s\n", registration.HostName, err)
 			return nil
 		}
