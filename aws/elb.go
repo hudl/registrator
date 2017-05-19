@@ -230,8 +230,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 			}
 			tarH, _ := out2.(*elbv2.DescribeTargetHealthOutput)
 			if tarH.TargetHealthDescriptions == nil {
-				log.Printf("TargetHealthDescriptions are nil.  Are healthchecks disabled?")
-				return nil, nil
+				break
 			}
 			for _, thd := range tarH.TargetHealthDescriptions {
 				if *thd.Target.Port == port && *thd.Target.Id == instanceID {
