@@ -390,9 +390,10 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 
 	// Test for at least one healthy container in the target group.  We want to mark the ALB as down if there isn't one yet
 	if previousStatus == fargo.UNKNOWN || previousStatus == fargo.STARTING {
-		thList, err := GetHealthyTargets(elbMetadata.TargetGroupArn)
-		if err != nil {
-			log.Printf("Unable to find list of healthy targets for: %s, Error: %s\n", registration.HostName, err)
+		log.Printf("Looking up healthy targets for TG: %v", elbMetadata.TargetGroupArn)
+		thList, err2 := GetHealthyTargets(elbMetadata.TargetGroupArn)
+		if err2 != nil {
+			log.Printf("Unable to find list of healthy targets for: %s, Error: %s\n", registration.HostName, err2)
 			return nil
 		}
 		if len(thList) == 0 {
