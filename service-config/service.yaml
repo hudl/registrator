@@ -7,8 +7,8 @@ infrastructure:
   web:
     preferences:
       environment_variables:
-      - SERVICE_EUREKA_lookup_elbv2_endpoint: false
-      - SERVICE_REGISTER: true
+      - SERVICE_EUREKA_lookup_elbv2_endpoint: "false"
+      - SERVICE_REGISTER: "true"
     requirements:
       cpu_units: 10
       soft_memory_limit: 128
