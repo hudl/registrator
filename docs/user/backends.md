@@ -206,6 +206,7 @@ SERVICE_EUREKA_REGISTER_AWS_PUBLIC_IP = false (if true, set VIP and IPADDR value
 SERVICE_EUREKA_LOOKUP_ELBV2_ENDPOINT = false (if true, an entry will be added for an ELBv2 connected to a container target group in ECS - see below for more details)
 SERVICE_EUREKA_ELBV2_HOSTNAME = If set, will explicitly be used as the ELBv2 hostname - see below section.
 SERVICE_EUREKA_ELBV2_PORT = If set, will be explicitly used as the ELBv2 Port - see below.
+SERVICE_EUREKA_ELBV2_TARGETGROUP = If set, will be explicitly used as the ELBv2 TargetGroup - see below.
 SERVICE_EUREKA_ELBV2_ONLY_REGISTRATION = true (if false then adding the ELB hostname and port to each individual container registration will happen).
 ```
 
@@ -233,9 +234,9 @@ It will attempt to connect to the AWS service using the IAM role of the containe
 
 #### Manual Endpoint Specification
 
-If you specify `SERVICE_EUREKA_ELBV2_HOSTNAME=` and `SERVICE_EUREKA_ELBV2_PORT=` values on the container, then these will be used, rather than a lookup attempted.
+If you specify `SERVICE_EUREKA_ELBV2_HOSTNAME=`, `SERVICE_EUREKA_ELBV2_PORT=` and `SERVICE_EUREKA_ELBV2_TARGETGROUP=` values on the container, then these will be used, rather than a lookup attempted.
 
-If you specify the lookup flag, and also add these settings, the manual ones will take precedent.
+If you specify the lookup flag, and also add ALL of these settings, the manual ones will take precedent.
 
 ### AWS ELBv2 Only Registration
 
