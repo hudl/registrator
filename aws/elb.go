@@ -230,6 +230,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 			}
 			tarH, _ := out2.(*elbv2.DescribeTargetHealthOutput)
 			if tarH.TargetHealthDescriptions == nil {
+				log.Printf("Target health descriptions were nil for: %v", *tg.TargetGroupArn)
 				break
 			}
 			for _, thd := range tarH.TargetHealthDescriptions {
