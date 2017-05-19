@@ -387,6 +387,7 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 }
 
 func (b *Bridge) remove(containerId string, deregister bool) {
+	log.Printf("container stop detected for: %v", containerId)
 	b.Lock()
 	defer b.Unlock()
 
