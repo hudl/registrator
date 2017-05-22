@@ -101,6 +101,7 @@ func getAllTargetGroups(svc *elbv2.ELBV2) ([]*elbv2.DescribeTargetGroupsOutput, 
 			return nil, e
 		}
 	}
+	log.Printf("%v target groups retrieved.", len(tgs))
 	return tgs, e
 }
 
@@ -217,6 +218,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	// Check each target group's target list for a matching port and instanceID
 	// Assumption: that that there is only one LB for the target group (though the data structure allows more)
 	for _, tgs := range tgslice {
+		log.Printf("%v target groups to check.", len(tgs.TargetGroups))
 		for _, tg := range tgs.TargetGroups {
 			log.Printf("Checking target group: %v", *tg.TargetGroupArn)
 
