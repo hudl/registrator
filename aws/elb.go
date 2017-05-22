@@ -101,7 +101,6 @@ func getAllTargetGroups(svc *elbv2.ELBV2) ([]*elbv2.DescribeTargetGroupsOutput, 
 			return nil, e
 		}
 	}
-	log.Printf("%v target groups retrieved.", len(tgs))
 	return tgs, e
 }
 
@@ -220,7 +219,6 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	for _, tgs := range tgslice {
 		log.Printf("%v target groups to check.", len(tgs.TargetGroups))
 		for _, tg := range tgs.TargetGroups {
-			log.Printf("Checking target group: %v", *tg.TargetGroupArn)
 
 			thParams := &elbv2.DescribeTargetHealthInput{
 				TargetGroupArn: awssdk.String(*tg.TargetGroupArn),
@@ -234,11 +232,11 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 			tarH, _ := out2.(*elbv2.DescribeTargetHealthOutput)
 			if tarH.TargetHealthDescriptions == nil {
 				log.Printf("Target health descriptions were nil for: %v", *tg.TargetGroupArn)
-				break
+				continue
 			}
 			for _, thd := range tarH.TargetHealthDescriptions {
 				if *thd.Target.Port == port && *thd.Target.Id == instanceID {
-					log.Printf("Target matched!")
+					log.Printf("Target group matched - %v", *tg.TargetGroupArn)
 					lbArns = tg.LoadBalancerArns
 					tgArn = *tg.TargetGroupArn
 					break
