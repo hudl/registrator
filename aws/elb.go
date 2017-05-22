@@ -153,7 +153,7 @@ func GetHealthyTargets(tgArn string) (thds []*elbv2.TargetHealthDescription, err
 
 // Actual func outside of caching mechanism
 func getHealthyTargets(tgArn string) (ths []*elbv2.TargetHealthDescription, err error) {
-
+	log.Printf("Looking for healthy targets")
 	svc, err := getSession()
 	if err != nil {
 		return nil, err
@@ -231,7 +231,6 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 			}
 			tarH, _ := out2.(*elbv2.DescribeTargetHealthOutput)
 			if tarH.TargetHealthDescriptions == nil {
-				log.Printf("Target health descriptions were nil for: %v", *tg.TargetGroupArn)
 				continue
 			}
 			for _, thd := range tarH.TargetHealthDescriptions {
@@ -375,8 +374,8 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 		// We don't have the ELB endpoint, so look it up.
 
 		elbMetadata1, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port))
-		if err != nil || elbMetadata1 != nil {
-			log.Printf("Unable to find associated ELBv2 for: %s, Error: %s\n", registration.HostName, err)
+		if err != nil || elbMetadata1 == nil {
+			log.Printf("Unable to find associated ELBv2 for service: %s, instance: %s hostname: %s port: %v, Error: %s\n", service.Name, awsMetadata.InstanceID, registration.HostName, registration.Port, err)
 			return nil
 		}
 		elbMetadata = *elbMetadata1
@@ -387,7 +386,7 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 		registration.IPAddr = ""
 		registration.HostName = elbMetadata.DNSName
 	}
-	log.Printf("elb data 2: %+v", elbMetadata.TargetGroupArn)
+
 	if CheckELBOnlyReg(service) {
 		// Remove irrelevant metadata from an ELB only registration
 		registration.DataCenterInfo.Metadata = fargo.AmazonMetadataType{
@@ -405,7 +404,7 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 		log.Printf("Looking up healthy targets for TG: %v", elbMetadata.TargetGroupArn)
 		thList, err2 := GetHealthyTargets(elbMetadata.TargetGroupArn)
 		if err2 != nil {
-			log.Printf("Unable to find list of healthy targets for: %s, Error: %s\n", registration.HostName, err2)
+			log.Printf("Unable to find list of healthy targets for: instance: %s hostname: %s port: %v, Error: %s\n", awsMetadata.InstanceID, registration.HostName, registration.Port, err2)
 			return nil
 		}
 		if len(thList) == 0 {
