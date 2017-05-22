@@ -421,12 +421,23 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 	return registration
 }
 
+// Check an ELB's initial status in eureka
+func elbSetInitialStatus(client fargo.EurekaConnection, registration *fargo.Instance) {
+	result, err := client.GetInstance(registration.App, GetMetadata().InstanceID)
+	if err != nil || result == nil {
+		previousStatus = fargo.UNKNOWN
+	} else {
+		previousStatus = result.Status
+	}
+}
+
 // RegisterWithELBv2 - If called, and flags are active, register an ELBv2 endpoint instead of the container directly
 // This will mean traffic is directed to the ALB rather than directly to containers
 func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
 	if CheckELBFlags(service) {
 		log.Printf("Found ELBv2 flags, will attempt to register LB for: %s\n", GetUniqueID(*registration))
 		//refreshInterval = config.RefreshTtl
+		elbSetInitialStatus(client, registration)
 		elbReg := setRegInfo(service, registration)
 		if elbReg != nil {
 			previousStatus = elbReg.Status
