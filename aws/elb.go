@@ -229,8 +229,8 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 				log.Printf("An error occurred using DescribeTargetHealth: %s \n", err.Error())
 				return nil, err
 			}
-			tarH, _ := out2.(*elbv2.DescribeTargetHealthOutput)
-			if tarH.TargetHealthDescriptions == nil {
+			tarH, ok := out2.(*elbv2.DescribeTargetHealthOutput)
+			if !ok || tarH.TargetHealthDescriptions == nil {
 				continue
 			}
 			for _, thd := range tarH.TargetHealthDescriptions {
