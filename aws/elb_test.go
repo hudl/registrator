@@ -632,7 +632,7 @@ func Test_testHealth(t *testing.T) {
 	t.Run("Should return UP because of healthy targets 1", func(t *testing.T) {
 		flushCache(tgArn)
 		setupTHDCache(tgArn, healthyTHDs)
-		var previousStatus eureka.StatusType
+		previousStatus := eureka.UNKNOWN
 		eurekaStatus := eureka.UNKNOWN
 		wanted := eureka.UP
 		wantedNow := eureka.UP
