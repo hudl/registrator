@@ -424,6 +424,7 @@ func testStatus(containerID string, eurekaStatus fargo.StatusType, previousStatu
 	}
 
 	if previousStatus != fargo.UP {
+		log.Printf("Previous status was: %v, need to check for healthy targets.", previousStatus)
 		// The ELB data should be cached, so just get it from there.
 		result, found := generalCache.Get(containerID)
 		if !found {
@@ -452,6 +453,7 @@ func testStatus(containerID string, eurekaStatus fargo.StatusType, previousStatu
 // Test eureka registration status and mutate registration accordingly depending on container health.
 func testHealth(service *bridge.Service, client fargo.EurekaConnection, elbReg *fargo.Instance) {
 	eurekaStatus := getELBStatus(client, elbReg)
+	log.Printf("Eureka status check gave: %v", eurekaStatus)
 	containerID := service.Origin.ContainerID
 	last := previousStatus
 	previousStatus, elbReg.Status = testStatus(containerID, eurekaStatus, last)
