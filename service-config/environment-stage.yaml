@@ -1,0 +1,7 @@
+environment: stage
+infrastructure:
+  web:
+    requirements:
+      docker_command: ["-ttl","30","-ttl-refresh","15","-require-label","-resync","300","eureka://eureka.app.staghudl.com:8080/eureka/v2"]
+    preferences:
+      ecsCluster: s-marvel-ecs

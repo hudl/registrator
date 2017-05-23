@@ -1,4 +1,4 @@
-environment: sidecartest
+environment: testsidecar
 infrastructure:
   web:
     requirements:
