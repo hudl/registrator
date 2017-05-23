@@ -416,15 +416,15 @@ func getELBStatus(client fargo.EurekaConnection, registration *fargo.Instance) f
 }
 
 // Return appropriate registration statuses based on input and cached ELB data
-func testStatus(containerID string, eurekaStatus fargo.StatusType, previousStatus fargo.StatusType) (newStatus fargo.StatusType, regStatus fargo.StatusType) {
+func testStatus(containerID string, eurekaStatus fargo.StatusType, inputStatus fargo.StatusType) (newStatus fargo.StatusType, regStatus fargo.StatusType) {
 
 	// Nothing to do if eureka says we're up, just return UP
 	if eurekaStatus == fargo.UP {
 		return fargo.UP, fargo.UP
 	}
 
-	if previousStatus != fargo.UP {
-		log.Printf("Previous status was: %v, need to check for healthy targets.", previousStatus)
+	if inputStatus != fargo.UP {
+		log.Printf("Previous status was: %v, need to check for healthy targets.", inputStatus)
 		// The ELB data should be cached, so just get it from there.
 		result, found := generalCache.Get(containerID)
 		if !found {
