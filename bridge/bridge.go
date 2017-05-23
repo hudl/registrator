@@ -305,9 +305,8 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	}
 
 	if b.config.RequireLabel {
-		log.Printf("Checking for label SERVICE_REGISTER")
-		if mapDefault(metadata, "register", "") == "" {
-			log.Printf("Did not find label SERVICE_REGISTER")
+		if strings.ToLower(mapDefault(metadata, "register", "false")) == "false" {
+			log.Printf("Did not find label SERVICE_REGISTER on %s - ignoring.", container.Name)
 			return nil
 		}
 	}
@@ -387,6 +386,7 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 }
 
 func (b *Bridge) remove(containerId string, deregister bool) {
+	log.Printf("container stop detected for: %v", containerId)
 	b.Lock()
 	defer b.Unlock()
 

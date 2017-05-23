@@ -19,8 +19,9 @@ import (
 
 // LBInfo represents a ELBv2 endpoint
 type LBInfo struct {
-	DNSName string
-	Port    int64
+	DNSName        string
+	Port           int64
+	TargetGroupArn string
 }
 
 type lookupValues struct {
@@ -28,9 +29,11 @@ type lookupValues struct {
 	Port       int64
 }
 
-const defExpirationTime = 10 * time.Second
+const DEFAULT_EXP_TIME = 10 * time.Second
 
-var generalCache = gocache.New(defExpirationTime, defExpirationTime)
+var generalCache = gocache.New(DEFAULT_EXP_TIME, DEFAULT_EXP_TIME)
+var previousStatus = fargo.UNKNOWN
+var refreshInterval int
 
 type any interface{}
 
@@ -44,7 +47,6 @@ func getAndCache(key string, input any, f any, cacheTime time.Duration) (any, er
 
 	result, found := generalCache.Get(key)
 	if !found {
-		//log.Printf("Key %v not cached.  Caching for %v", key, cacheTime)
 		caller := vf.Call([]reflect.Value{vinput})
 		output := caller[0].Interface()
 		err, _ := caller[1].Interface().(error)
@@ -132,6 +134,50 @@ func GetELBV2ForContainer(containerID string, instanceID string, port int64) (lb
 	return ret, err
 }
 
+// GetHealthyTargets Get a list of healthy targets given a target group ARN.  Cache for default interval
+func GetHealthyTargets(tgArn string) (thds []*elbv2.TargetHealthDescription, err error) {
+	var healthCheckCacheTime time.Duration
+	if refreshInterval != 0 {
+		healthCheckCacheTime = (time.Duration(refreshInterval) * time.Second) - (1 * time.Second)
+	} else {
+		healthCheckCacheTime = DEFAULT_EXP_TIME
+	}
+
+	out, err := getAndCache(tgArn, tgArn, getHealthyTargets, healthCheckCacheTime)
+	if out == nil || err != nil {
+		return nil, err
+	}
+	ret, _ := out.([]*elbv2.TargetHealthDescription)
+	return ret, err
+}
+
+// Actual func outside of caching mechanism
+func getHealthyTargets(tgArn string) (ths []*elbv2.TargetHealthDescription, err error) {
+	log.Printf("Looking for healthy targets")
+	svc, err := getSession()
+	if err != nil {
+		return nil, err
+	}
+
+	thParams := &elbv2.DescribeTargetHealthInput{
+		TargetGroupArn: awssdk.String(tgArn),
+	}
+
+	tarH, err := svc.DescribeTargetHealth(thParams)
+	if err != nil || tarH == nil {
+		log.Printf("An error occurred using DescribeTargetHealth: %s \n", err.Error())
+		return nil, err
+	}
+
+	var healthyTargets []*elbv2.TargetHealthDescription
+	for _, thd := range tarH.TargetHealthDescriptions {
+		if *thd.TargetHealth.State == "healthy" {
+			healthyTargets = append(healthyTargets, thd)
+		}
+	}
+	return healthyTargets, nil
+}
+
 //
 // Does the real work of retrieving the load balancer details, given a lookupValues struct.
 // Note: This function uses caching extensively to reduce the burden on the AWS API when called from multiple goroutines
@@ -161,7 +207,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	// TODO Note: There could be thousands of these, and we need to check them all.  Seems to be no
 	// other way to retrieve a TG via instance/port with current API
 
-	out1, err := getAndCache("tg", svc, getAllTargetGroups, defExpirationTime)
+	out1, err := getAndCache("tg", svc, getAllTargetGroups, DEFAULT_EXP_TIME)
 	if err != nil || out1 == nil {
 		message := fmt.Errorf("Failed to retrieve Target Groups: %s", err)
 		return nil, message
@@ -171,20 +217,25 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	// Check each target group's target list for a matching port and instanceID
 	// Assumption: that that there is only one LB for the target group (though the data structure allows more)
 	for _, tgs := range tgslice {
+		log.Printf("%v target groups to check.", len(tgs.TargetGroups))
 		for _, tg := range tgs.TargetGroups {
 
 			thParams := &elbv2.DescribeTargetHealthInput{
 				TargetGroupArn: awssdk.String(*tg.TargetGroupArn),
 			}
 
-			out2, err := getAndCache(*thParams.TargetGroupArn, thParams, svc.DescribeTargetHealth, defExpirationTime)
+			out2, err := getAndCache(*thParams.TargetGroupArn, thParams, svc.DescribeTargetHealth, DEFAULT_EXP_TIME)
 			if err != nil || out2 == nil {
 				log.Printf("An error occurred using DescribeTargetHealth: %s \n", err.Error())
 				return nil, err
 			}
-			tarH, _ := out2.(*elbv2.DescribeTargetHealthOutput)
+			tarH, ok := out2.(*elbv2.DescribeTargetHealthOutput)
+			if !ok || tarH.TargetHealthDescriptions == nil {
+				continue
+			}
 			for _, thd := range tarH.TargetHealthDescriptions {
 				if *thd.Target.Port == port && *thd.Target.Id == instanceID {
+					log.Printf("Target group matched - %v", *tg.TargetGroupArn)
 					lbArns = tg.LoadBalancerArns
 					tgArn = *tg.TargetGroupArn
 					break
@@ -205,7 +256,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	lsnrParams := &elbv2.DescribeListenersInput{
 		LoadBalancerArn: lbArns[0],
 	}
-	out3, err := getAndCache("lsnr_"+*lsnrParams.LoadBalancerArn, lsnrParams, svc.DescribeListeners, defExpirationTime)
+	out3, err := getAndCache("lsnr_"+*lsnrParams.LoadBalancerArn, lsnrParams, svc.DescribeListeners, DEFAULT_EXP_TIME)
 	if err != nil || out3 == nil {
 		log.Printf("An error occurred using DescribeListeners: %s \n", err.Error())
 		return nil, err
@@ -229,7 +280,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	lbParams := &elbv2.DescribeLoadBalancersInput{
 		LoadBalancerArns: lbArns,
 	}
-	out4, err := getAndCache("lb_"+*lbParams.LoadBalancerArns[0], lbParams, svc.DescribeLoadBalancers, defExpirationTime)
+	out4, err := getAndCache("lb_"+*lbParams.LoadBalancerArns[0], lbParams, svc.DescribeLoadBalancers, DEFAULT_EXP_TIME)
 	if err != nil || out4 == nil {
 		log.Printf("An error occurred using DescribeLoadBalancers: %s \n", err.Error())
 		return nil, err
@@ -239,12 +290,13 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 
 	info.DNSName = *lbData.LoadBalancers[0].DNSName
 	info.Port = *lbPort
+	info.TargetGroupArn = tgArn
 	return info, nil
 }
 
 // CheckELBFlags - Helper function to check if the correct config flags are set to use ELBs
 // We accept two possible configurations here - either eureka_lookup_elbv2_endpoint can be set,
-// for automatic lookup, or eureka_elbv2_hostname and eureka_elbv2_port can be set manually
+// for automatic lookup, or eureka_elbv2_hostname, eureka_elbv2_port and eureka_elbv2_targetgroup can be set manually
 // to avoid the 10-20s wait for lookups
 func CheckELBFlags(service *bridge.Service) bool {
 
@@ -252,7 +304,7 @@ func CheckELBFlags(service *bridge.Service) bool {
 	var hasExplicit bool
 	var useLookup bool
 
-	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" {
+	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" && service.Attrs["eureka_elbv2_targetgroup"] != "" {
 		v, err := strconv.ParseUint(service.Attrs["eureka_elbv2_port"], 10, 16)
 		if err != nil {
 			log.Printf("eureka_elbv2_port must be valid 16-bit unsigned int, was %v : %s", v, err)
@@ -302,24 +354,31 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 
 	awsMetadata := GetMetadata()
 	var elbEndpoint string
+	var elbMetadata LBInfo
 
 	// We've been given the ELB endpoint, so use this
-	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" {
-		log.Printf("found ELBv2 hostname=%v and port=%v options, using these.", service.Attrs["eureka_elbv2_hostname"], service.Attrs["eureka_elbv2_port"])
+	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" && service.Attrs["eureka_elbv2_targetgroup"] != "" {
+		log.Printf("found ELBv2 hostname=%v, port=%v and TG=%v options, using these.", service.Attrs["eureka_elbv2_hostname"], service.Attrs["eureka_elbv2_port"], service.Attrs["eureka_elbv2_targetgroup"])
 		registration.Port, _ = strconv.Atoi(service.Attrs["eureka_elbv2_port"])
 		registration.HostName = service.Attrs["eureka_elbv2_hostname"]
 		registration.IPAddr = ""
 		registration.VipAddress = ""
 		elbEndpoint = service.Attrs["eureka_elbv2_hostname"] + "_" + service.Attrs["eureka_elbv2_port"]
+		elbMetadata = LBInfo{
+			Port:           int64(registration.Port),
+			DNSName:        registration.HostName,
+			TargetGroupArn: service.Attrs["eureka_elbv2_targetgroup"],
+		}
 
 	} else {
 		// We don't have the ELB endpoint, so look it up.
-		elbMetadata, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port))
 
-		if err != nil {
-			log.Printf("Unable to find associated ELBv2 for: %s, Error: %s\n", registration.HostName, err)
+		elbMetadata1, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port))
+		if err != nil || elbMetadata1 == nil {
+			log.Printf("Unable to find associated ELBv2 for service: %s, instance: %s hostname: %s port: %v, Error: %s\n", service.Name, awsMetadata.InstanceID, registration.HostName, registration.Port, err)
 			return nil
 		}
+		elbMetadata = *elbMetadata1
 
 		elbStrPort := strconv.FormatInt(elbMetadata.Port, 10)
 		elbEndpoint = elbMetadata.DNSName + "_" + elbStrPort
@@ -346,6 +405,61 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 	return registration
 }
 
+// Check an ELB's initial status in eureka
+func getELBStatus(client fargo.EurekaConnection, registration *fargo.Instance) fargo.StatusType {
+	result, err := client.GetInstance(registration.App, GetUniqueID(*registration))
+	if err != nil || result == nil {
+		log.Printf("ELB not yet present, or error retrieving from eureka: %s\n", err)
+		return fargo.UNKNOWN
+	}
+	return result.Status
+}
+
+// Return appropriate registration statuses based on input and cached ELB data
+func testStatus(containerID string, eurekaStatus fargo.StatusType, inputStatus fargo.StatusType) (newStatus fargo.StatusType, regStatus fargo.StatusType) {
+
+	// Nothing to do if eureka says we're up, just return UP
+	if eurekaStatus == fargo.UP {
+		return fargo.UP, fargo.UP
+	}
+
+	if inputStatus != fargo.UP {
+		log.Printf("Previous status was: %v, need to check for healthy targets.", inputStatus)
+		// The ELB data should be cached, so just get it from there.
+		result, found := generalCache.Get(containerID)
+		if !found {
+			log.Printf("Unable to retrieve ELB data from cache.  Cannot check for healthy targets!")
+		}
+		elbMetadata, ok := result.(*LBInfo)
+		if !ok {
+			log.Printf("Unable to convert LBInfo from cache.  Cannot check for healthy targets!")
+		}
+		log.Printf("Looking up healthy targets for TG: %v", elbMetadata.TargetGroupArn)
+		thList, err2 := GetHealthyTargets(elbMetadata.TargetGroupArn)
+		if err2 != nil {
+			log.Printf("An error occurred looking up healthy targets, for target group: %s, will set to STARTING in eureka. Error: %s\n", elbMetadata.TargetGroupArn, err2)
+			return fargo.UNKNOWN, fargo.STARTING
+		}
+		if len(thList) == 0 {
+			log.Printf("Waiting on a healthy target in TG: %s - currently all UNHEALTHY.  Setting eureka state to STARTING.  This is normal for a new service which is starting up.  It may indicate a problem otherwise.", elbMetadata.TargetGroupArn)
+			return fargo.STARTING, fargo.STARTING
+		}
+		log.Printf("Found %v healthy targets for target group: %s.  Setting eureka state to UP.", len(thList), elbMetadata.TargetGroupArn)
+		return fargo.UP, fargo.UP
+	}
+	return fargo.UP, fargo.UP
+}
+
+// Test eureka registration status and mutate registration accordingly depending on container health.
+func testHealth(service *bridge.Service, client fargo.EurekaConnection, elbReg *fargo.Instance) {
+	eurekaStatus := getELBStatus(client, elbReg)
+	log.Printf("Eureka status check gave: %v", eurekaStatus)
+	containerID := service.Origin.ContainerID
+	last := previousStatus
+	previousStatus, elbReg.Status = testStatus(containerID, eurekaStatus, last)
+	log.Printf("Status health check returned prev: %v registration: %v", previousStatus, elbReg.Status)
+}
+
 // RegisterWithELBv2 - If called, and flags are active, register an ELBv2 endpoint instead of the container directly
 // This will mean traffic is directed to the ALB rather than directly to containers
 func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
@@ -353,6 +467,7 @@ func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, cl
 		log.Printf("Found ELBv2 flags, will attempt to register LB for: %s\n", GetUniqueID(*registration))
 		elbReg := setRegInfo(service, registration)
 		if elbReg != nil {
+			testHealth(service, client, elbReg)
 			err := client.ReregisterInstance(elbReg)
 			return err
 		}
@@ -363,11 +478,12 @@ func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, cl
 			// To avoid any wait, the endpoints can be specified manually as eureka_elbv2_hostname and eureka_elbv2_port vars
 			random := r2.Intn(5000)
 			modifier := +time.Duration(time.Millisecond * 5000)
-			period := time.Duration(time.Millisecond*time.Duration(random)) + modifier + time.Duration(defExpirationTime*time.Duration(i))
+			period := time.Duration(time.Millisecond*time.Duration(random)) + modifier + time.Duration(DEFAULT_EXP_TIME*time.Duration(i))
 			log.Printf("Retrying retrieval of ELBv2 data, attempt %v/3 - Waiting for %v seconds", i, period)
 			time.Sleep(period)
 			elbReg = setRegInfo(service, registration)
 			if elbReg != nil {
+				testHealth(service, client, elbReg)
 				err := client.ReregisterInstance(elbReg)
 				return err
 			}
@@ -383,6 +499,15 @@ func HeartbeatELBv2(service *bridge.Service, registration *fargo.Instance, clien
 		elbReg := setRegInfo(service, registration)
 		if elbReg != nil {
 			err := client.HeartBeatInstance(elbReg)
+			// If the status of the ELB has not established as up, then recheck the health
+			if previousStatus != fargo.UP {
+				testHealth(service, client, elbReg)
+				err := client.ReregisterInstance(elbReg)
+				if err != nil {
+					log.Printf("An error occurred when attempting to reregister ELB: %s", err)
+					return err
+				}
+			}
 			return err
 		}
 	}

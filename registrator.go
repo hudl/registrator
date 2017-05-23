@@ -49,15 +49,16 @@ func main() {
 		versionChecker.PrintVersion()
 		os.Exit(0)
 	}
+	flag.Parse()
+
 	log.Printf("Starting registrator %s ...", Version)
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s [options] <registry URI>\n\n", os.Args[0])
 		flag.PrintDefaults()
+		log.Printf("Failed to start registrator, options were incorrect.")
 	}
-
-	flag.Parse()
 
 	if flag.NArg() != 1 {
 		if flag.NArg() == 0 {

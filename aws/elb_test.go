@@ -8,6 +8,7 @@ import (
 
 	"log"
 
+	"github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/gliderlabs/registrator/bridge"
 	eureka "github.com/hudl/fargo"
 	gocache "github.com/patrickmn/go-cache"
@@ -66,18 +67,35 @@ func TestCheckELBOnlyReg(t *testing.T) {
 }
 
 // Set up the cache
-func setupCache(containerID string, instanceID string, lbDNSName string, containerPort int64, lbPort int64) {
-	//cache.m = make(map[string]cacheEntry)
-	//cache.m[containerID] = cacheEntry{lb: &lb}
+func setupCache(containerID string, instanceID string, lbDNSName string, containerPort int64, lbPort int64, tgArn string, thds []*elbv2.TargetHealthDescription) {
 
 	fn := func(l lookupValues) (*LBInfo, error) {
-		return &LBInfo{DNSName: lbDNSName, Port: lbPort}, nil
+		return &LBInfo{DNSName: lbDNSName, Port: lbPort, TargetGroupArn: tgArn}, nil
 	}
 	i := lookupValues{InstanceID: instanceID, Port: containerPort}
 
+	fn2 := func(thds []*elbv2.TargetHealthDescription) ([]*elbv2.TargetHealthDescription, error) {
+		return thds, nil
+	}
 	getAndCache(containerID, i, fn, gocache.NoExpiration)
+	getAndCache(tgArn, thds, fn2, gocache.NoExpiration)
 	r, _ := generalCache.Get("123123412")
 	fmt.Printf("Cache value now looks like this: %+v\n", r.(*LBInfo))
+}
+
+// Setup the target health descriptions cache specifically
+func setupTHDCache(tgArn string, thds []*elbv2.TargetHealthDescription) {
+	fn2 := func(thds []*elbv2.TargetHealthDescription) ([]*elbv2.TargetHealthDescription, error) {
+		return thds, nil
+	}
+	getAndCache(tgArn, thds, fn2, gocache.NoExpiration)
+	r, _ := generalCache.Get(tgArn)
+	fmt.Printf("THD Cache value now looks like this: %+v\n", r.([]*elbv2.TargetHealthDescription))
+}
+
+// Flush from cache
+func flushCache(key string) {
+	generalCache.Delete(key)
 }
 
 // Test_GetELBV2ForContainer - Test expected values are returned
@@ -85,11 +103,14 @@ func Test_GetELBV2ForContainer(t *testing.T) {
 
 	// Setup cache
 	lbWant := LBInfo{
-		DNSName: "my-lb",
-		Port:    int64(12345),
+		DNSName:        "my-lb",
+		Port:           int64(12345),
+		TargetGroupArn: "arn:1234",
 	}
 
-	setupCache("123123412", "instance-123", "my-lb", int64(1234), int64(12345))
+	thds := []*elbv2.TargetHealthDescription{}
+	tgArn := "arn:1234"
+	setupCache("123123412", "instance-123", "my-lb", int64(1234), int64(12345), tgArn, thds)
 
 	type args struct {
 		containerID string
@@ -148,6 +169,14 @@ func TestCheckELBFlags(t *testing.T) {
 		},
 	}
 
+	svcFalse4 := bridge.Service{
+		Attrs: map[string]string{
+			"eureka_elbv2_hostname":      "my-name",
+			"eureka_elbv2_port":          "1234",
+			"eureka_datacenterinfo_name": "AMAZON",
+		},
+	}
+
 	svcTrue := bridge.Service{
 		Attrs: map[string]string{
 			"eureka_lookup_elbv2_endpoint": "true",
@@ -159,6 +188,7 @@ func TestCheckELBFlags(t *testing.T) {
 		Attrs: map[string]string{
 			"eureka_elbv2_hostname":      "my-name",
 			"eureka_elbv2_port":          "1234",
+			"eureka_elbv2_targetgroup":   "arn:1234",
 			"eureka_datacenterinfo_name": "AMAZON",
 		},
 	}
@@ -168,6 +198,7 @@ func TestCheckELBFlags(t *testing.T) {
 			"eureka_elbv2_hostname":        "my-name",
 			"eureka_lookup_elbv2_endpoint": "true",
 			"eureka_elbv2_port":            "1234",
+			"eureka_elbv2_targetgroup":     "arn:1234",
 			"eureka_datacenterinfo_name":   "AMAZON",
 		},
 	}
@@ -177,6 +208,7 @@ func TestCheckELBFlags(t *testing.T) {
 			"eureka_elbv2_hostname":        "my-name",
 			"eureka_lookup_elbv2_endpoint": "false",
 			"eureka_elbv2_port":            "1234",
+			"eureka_elbv2_targetgroup":     "arn:1234",
 			"eureka_datacenterinfo_name":   "AMAZON",
 		},
 	}
@@ -202,6 +234,11 @@ func TestCheckELBFlags(t *testing.T) {
 		{
 			name: "elb hostname, but not port is set",
 			args: args{service: &svcFalse3},
+			want: false,
+		},
+		{
+			name: "elb hostname, port set, but no targetgroup",
+			args: args{service: &svcFalse4},
 			want: false,
 		},
 		{
@@ -270,8 +307,10 @@ func Test_setRegInfo(t *testing.T) {
 		Status:         eureka.UP,
 	}
 
+	thds := []*elbv2.TargetHealthDescription{}
+	tgArn := "arn:1234"
 	// Init LB info cache
-	setupCache("123123412", "instance-123", "correct-lb-dnsname", int64(1234), int64(9001))
+	setupCache("123123412", "instance-123", "correct-lb-dnsname", int64(1234), int64(9001), tgArn, thds)
 
 	r, _ := generalCache.Get("123123412")
 	lb := r.(*LBInfo)
@@ -341,6 +380,7 @@ func Test_setRegInfoExplicitEndpoint(t *testing.T) {
 			"eureka_lookup_elbv2_endpoint": "false",
 			"eureka_elbv2_hostname":        "hostname-i-set",
 			"eureka_elbv2_port":            "65535",
+			"eureka_elbv2_targetgroup":     "arn:1234",
 			"eureka_datacenterinfo_name":   "AMAZON",
 		},
 		Name: "app",
@@ -372,7 +412,9 @@ func Test_setRegInfoExplicitEndpoint(t *testing.T) {
 
 	// Init LB info cache
 	// if things are working correctly, this data won't be used for this test
-	setupCache("123123412", "instance-123", "i-should-not-be-used", int64(1234), int64(666))
+	thds := []*elbv2.TargetHealthDescription{}
+	tgArn := "arn:1234"
+	setupCache("123123412", "instance-123", "i-should-not-be-used", int64(1234), int64(666), tgArn, thds)
 
 	wantedAwsInfo := eureka.AmazonMetadataType{
 		PublicHostname: svc.Attrs["eureka_elbv2_hostname"],
@@ -487,7 +529,9 @@ func Test_setRegInfoELBv2Only(t *testing.T) {
 		t.Errorf("Unable to parse metadata")
 	}
 	// Init LB info cache
-	setupCache("123123412", "instance-123", "correct-hostname", int64(1234), int64(12345))
+	thds := []*elbv2.TargetHealthDescription{}
+	tgArn := "arn:1234"
+	setupCache("123123412", "instance-123", "correct-hostname", int64(1234), int64(12345), tgArn, thds)
 
 	r, _ := generalCache.Get("123123412")
 	lb := r.(*LBInfo)
@@ -550,4 +594,92 @@ func CheckMetadata(t *testing.T, md eureka.InstanceMetadata, key string, want st
 	if val != want {
 		t.Errorf("Wanted %s=%s in metadata, was %+v", key, want, val)
 	}
+}
+
+// Test_testHealth - Test that testHealth mutates the registration details correctly
+func Test_testHealth(t *testing.T) {
+	initMetadata() // Used from metadata_test.go
+
+	port := "80"
+	unhealthyTHDs := []*elbv2.TargetHealthDescription{}
+	healthyTHDs := []*elbv2.TargetHealthDescription{
+		{
+			HealthCheckPort: &port,
+		},
+	}
+	tgArn := "arn:1234"
+	containerID := "123123412"
+
+	setupCache("123123412", "instance-123", "correct-lb-dnsname", int64(1234), int64(9001), tgArn, unhealthyTHDs)
+
+	t.Run("Should return STARTING because of unhealthy targets", func(t *testing.T) {
+		flushCache(tgArn)
+		setupTHDCache(tgArn, unhealthyTHDs)
+		var previousStatus eureka.StatusType
+		eurekaStatus := eureka.UNKNOWN
+		wanted := eureka.STARTING
+		wantedNow := eureka.STARTING
+
+		now, reg := testStatus(containerID, eurekaStatus, previousStatus)
+		if reg != wanted {
+			t.Errorf("Should return %v status for reg status.  Returned %v", wanted, reg)
+		}
+		if now != wantedNow {
+			t.Errorf("Should return %v status for previous status.  Returned %v", wantedNow, now)
+		}
+	})
+
+	t.Run("Should return UP because of healthy targets 1", func(t *testing.T) {
+		flushCache(tgArn)
+		setupTHDCache(tgArn, healthyTHDs)
+		previousStatus := eureka.UNKNOWN
+		eurekaStatus := eureka.UNKNOWN
+		wanted := eureka.UP
+		wantedNow := eureka.UP
+
+		now, reg := testStatus(containerID, eurekaStatus, previousStatus)
+		if reg != wanted {
+			t.Errorf("Should return %v status for reg status.  Returned %v", wanted, reg)
+		}
+		if now != wantedNow {
+			t.Errorf("Should return %v status for previous status.  Returned %v", wantedNow, now)
+		}
+	})
+
+	t.Run("Should return UP because of eureka status", func(t *testing.T) {
+		flushCache(tgArn)
+		setupTHDCache(tgArn, unhealthyTHDs)
+
+		previousStatus := eureka.UNKNOWN
+		eurekaStatus := eureka.UP
+		wantedReg := eureka.UP
+		wantedNow := eureka.UP
+
+		now, reg := testStatus(containerID, eurekaStatus, previousStatus)
+		if reg != wantedReg {
+			t.Errorf("Should return %v status for reg status.  Returned %v", wantedReg, reg)
+		}
+		if now != wantedNow {
+			t.Errorf("Should return %v status for previous status.  Returned %v", wantedNow, now)
+		}
+	})
+
+	t.Run("Should return UP because of healthy targets 2", func(t *testing.T) {
+		flushCache(tgArn)
+		setupTHDCache(tgArn, healthyTHDs)
+
+		previousStatus := eureka.STARTING
+		eurekaStatus := eureka.STARTING
+		wantedReg := eureka.UP
+		wantedNow := eureka.UP
+
+		now, reg := testStatus(containerID, eurekaStatus, previousStatus)
+		if reg != wantedReg {
+			t.Errorf("Should return %v status for reg status.  Returned %v", wantedReg, reg)
+		}
+		if now != wantedNow {
+			t.Errorf("Should return %v status for previous status.  Returned %v", wantedNow, now)
+		}
+	})
+
 }
