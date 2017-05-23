@@ -32,7 +32,7 @@ type lookupValues struct {
 const DEFAULT_EXP_TIME = 10 * time.Second
 
 var generalCache = gocache.New(DEFAULT_EXP_TIME, DEFAULT_EXP_TIME)
-var previousStatus fargo.StatusType
+var previousStatus = fargo.UNKNOWN
 var refreshInterval int
 
 type any interface{}
@@ -450,10 +450,12 @@ func testStatus(containerID string, eurekaStatus fargo.StatusType, previousStatu
 }
 
 // Test eureka registration status and mutate registration accordingly depending on container health.
-func testHealth(service *bridge.Service, client fargo.EurekaConnection, registration *fargo.Instance) {
-	eurekaStatus := getELBStatus(client, registration)
+func testHealth(service *bridge.Service, client fargo.EurekaConnection, elbReg *fargo.Instance) {
+	eurekaStatus := getELBStatus(client, elbReg)
 	containerID := service.Origin.ContainerID
-	previousStatus, registration.Status = testStatus(containerID, eurekaStatus, previousStatus)
+	last := previousStatus
+	previousStatus, elbReg.Status = testStatus(containerID, eurekaStatus, last)
+	log.Printf("Status health check returned prev: %v registration: %v", previousStatus, elbReg.Status)
 }
 
 // RegisterWithELBv2 - If called, and flags are active, register an ELBv2 endpoint instead of the container directly
