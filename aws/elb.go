@@ -32,7 +32,7 @@ type lookupValues struct {
 const DEFAULT_EXP_TIME = 10 * time.Second
 
 var generalCache = gocache.New(DEFAULT_EXP_TIME, DEFAULT_EXP_TIME)
-var previousStatus = fargo.UNKNOWN
+var previousStatus fargo.StatusType
 var refreshInterval int
 
 type any interface{}
@@ -399,22 +399,6 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 		registration.SetMetadataString("aws-instance-id", "")
 	}
 
-	// Test for at least one healthy container in the target group.  We want to mark the ALB as down if there isn't one yet
-	if previousStatus == fargo.UNKNOWN || previousStatus == fargo.STARTING {
-		log.Printf("Looking up healthy targets for TG: %v", elbMetadata.TargetGroupArn)
-		thList, err2 := GetHealthyTargets(elbMetadata.TargetGroupArn)
-		if err2 != nil {
-			log.Printf("Unable to find list of healthy targets for: instance: %s hostname: %s port: %v, Error: %s\n", awsMetadata.InstanceID, registration.HostName, registration.Port, err2)
-			return nil
-		}
-		if len(thList) == 0 {
-			log.Printf("Waiting on a healthy target in TG: %s - currently all UNHEALTHY.  This is normal for a new service which is starting up.  It may indicate a problem otherwise.", elbMetadata.TargetGroupArn)
-			registration.Status = fargo.STARTING
-		} else {
-			registration.Status = fargo.UP
-		}
-	}
-
 	registration.SetMetadataString("has-elbv2", "true")
 	registration.SetMetadataString("elbv2-endpoint", elbEndpoint)
 	registration.VipAddress = registration.IPAddr
@@ -422,13 +406,54 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 }
 
 // Check an ELB's initial status in eureka
-func elbSetInitialStatus(client fargo.EurekaConnection, registration *fargo.Instance) {
-	result, err := client.GetInstance(registration.App, GetMetadata().InstanceID)
+func getELBStatus(client fargo.EurekaConnection, registration *fargo.Instance) fargo.StatusType {
+	result, err := client.GetInstance(registration.App, GetUniqueID(*registration))
 	if err != nil || result == nil {
-		previousStatus = fargo.UNKNOWN
-	} else {
-		previousStatus = result.Status
+		log.Printf("ELB not yet present, or error retrieving from eureka: %s\n", err)
+		return fargo.UNKNOWN
 	}
+	return result.Status
+}
+
+// Return appropriate registration statuses based on input and cached ELB data
+func testStatus(containerID string, eurekaStatus fargo.StatusType, previousStatus fargo.StatusType) (newStatus fargo.StatusType, regStatus fargo.StatusType) {
+
+	// Nothing to do if eureka says we're up, just return UP
+	if eurekaStatus == fargo.UP {
+		return fargo.UP, fargo.UP
+	}
+
+	if previousStatus != fargo.UP {
+		// The ELB data should be cached, so just get it from there.
+		result, found := generalCache.Get(containerID)
+		if !found {
+			log.Printf("Unable to retrieve ELB data from cache.  Cannot check for healthy targets!")
+		}
+		elbMetadata, ok := result.(*LBInfo)
+		if !ok {
+			log.Printf("Unable to convert LBInfo from cache.  Cannot check for healthy targets!")
+		}
+		log.Printf("Looking up healthy targets for TG: %v", elbMetadata.TargetGroupArn)
+		thList, err2 := GetHealthyTargets(elbMetadata.TargetGroupArn)
+		if err2 != nil {
+			log.Printf("An error occurred looking up healthy targets, for target group: %s, will set to STARTING in eureka. Error: %s\n", elbMetadata.TargetGroupArn, err2)
+			return fargo.UNKNOWN, fargo.STARTING
+		}
+		if len(thList) == 0 {
+			log.Printf("Waiting on a healthy target in TG: %s - currently all UNHEALTHY.  Setting eureka state to STARTING.  This is normal for a new service which is starting up.  It may indicate a problem otherwise.", elbMetadata.TargetGroupArn)
+			return fargo.STARTING, fargo.STARTING
+		}
+		log.Printf("Found %v healthy targets for target group: %s.  Setting eureka state to UP.", len(thList), elbMetadata.TargetGroupArn)
+		return fargo.UP, fargo.UP
+	}
+	return fargo.UP, fargo.UP
+}
+
+// Test eureka registration status and mutate registration accordingly depending on container health.
+func testHealth(service *bridge.Service, client fargo.EurekaConnection, registration *fargo.Instance) {
+	eurekaStatus := getELBStatus(client, registration)
+	containerID := service.Origin.ContainerID
+	previousStatus, registration.Status = testStatus(containerID, eurekaStatus, previousStatus)
 }
 
 // RegisterWithELBv2 - If called, and flags are active, register an ELBv2 endpoint instead of the container directly
@@ -436,11 +461,9 @@ func elbSetInitialStatus(client fargo.EurekaConnection, registration *fargo.Inst
 func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
 	if CheckELBFlags(service) {
 		log.Printf("Found ELBv2 flags, will attempt to register LB for: %s\n", GetUniqueID(*registration))
-		//refreshInterval = config.RefreshTtl
-		elbSetInitialStatus(client, registration)
 		elbReg := setRegInfo(service, registration)
 		if elbReg != nil {
-			previousStatus = elbReg.Status
+			testHealth(service, client, elbReg)
 			err := client.ReregisterInstance(elbReg)
 			return err
 		}
@@ -456,7 +479,7 @@ func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, cl
 			time.Sleep(period)
 			elbReg = setRegInfo(service, registration)
 			if elbReg != nil {
-				previousStatus = elbReg.Status
+				testHealth(service, client, elbReg)
 				err := client.ReregisterInstance(elbReg)
 				return err
 			}
@@ -472,14 +495,17 @@ func HeartbeatELBv2(service *bridge.Service, registration *fargo.Instance, clien
 		elbReg := setRegInfo(service, registration)
 		if elbReg != nil {
 			err := client.HeartBeatInstance(elbReg)
+			// If the status of the ELB has not established as up, then recheck the health
+			if previousStatus != fargo.UP {
+				testHealth(service, client, elbReg)
+				err := client.ReregisterInstance(elbReg)
+				if err != nil {
+					log.Printf("An error occurred when attempting to reregister ELB: %s", err)
+					return err
+				}
+			}
 			return err
 		}
-		// If the status of the ELB has changed, then reregister it as UP
-		if elbReg.Status == fargo.UP && previousStatus != fargo.UP {
-			err := client.ReregisterInstance(elbReg)
-			return err
-		}
-		previousStatus = elbReg.Status
 	}
 	return fmt.Errorf("unable to heartbeat ELBv2. %s", GetUniqueID(*registration))
 }
