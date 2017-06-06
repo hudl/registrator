@@ -371,6 +371,13 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 			mapDefault(metadata, "tags", ""), b.config.ForceTags)
 	}
 
+	// Look for ECS labels and add them to metadata if present
+	for k, v := range container.Config.Labels {
+		if strings.Contains(k, "com.amazonaws.ecs") {
+			metadata[k] = v
+		}
+	}
+
 	id := mapDefault(metadata, "id", "")
 	if id != "" {
 		service.ID = id
