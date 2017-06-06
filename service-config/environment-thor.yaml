@@ -1,4 +1,4 @@
-environment: thormaster
+environment: thor
 infrastructure:
   web:
     requirements:
