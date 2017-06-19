@@ -3,6 +3,7 @@ package aws
 import (
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"reflect"
 	"strconv"
@@ -272,11 +273,6 @@ func lookupServiceName(clusterName string, taskArn string) string {
 		return ""
 	}
 
-	dsi := ecs.DescribeServicesInput{
-		Cluster:  &clusterName,
-		Services: servicesList,
-	}
-
 	dtout, err := svc.DescribeTasks(&dti)
 	if err != nil || dtout == nil || len(dtout.Tasks) == 0 {
 		log.Printf("Error occurred using DescribeTasks: %s", err)
@@ -285,14 +281,29 @@ func lookupServiceName(clusterName string, taskArn string) string {
 	taskDefArn := dtout.Tasks[0].TaskDefinitionArn
 	log.Printf("Task definition is: %v", *taskDefArn)
 
-	dsout, err := svc.DescribeServices(&dsi)
-	if err != nil || dsout == nil {
-		log.Printf("Error occurred using DescribeServices: %s", err)
-		return ""
-	}
-	for _, ser := range dsout.Services {
-		if *ser.TaskDefinition == *taskDefArn {
-			return *ser.ServiceName
+	// Lookup using maximum chunks of 10 service names
+	var servChunk []*string
+	for i := 0; i < len(servicesList); i++ {
+
+		servChunk = append(servChunk, servicesList[i])
+		// Make an API call every 10 service names, or on the last iteration over servicesList
+		if (math.Mod(float64(i+1), 10) == 0 && i > 0) || i == (len(servicesList)-1) {
+			dsi := ecs.DescribeServicesInput{
+				Cluster:  &clusterName,
+				Services: servChunk,
+			}
+
+			dsout, err := svc.DescribeServices(&dsi)
+			if err != nil || dsout == nil {
+				log.Printf("Error occurred using DescribeServices: %s", err)
+				return ""
+			}
+			for _, ser := range dsout.Services {
+				if *ser.TaskDefinition == *taskDefArn {
+					return *ser.ServiceName
+				}
+			}
+			servChunk = nil
 		}
 	}
 	log.Printf("Service could not be identified")
