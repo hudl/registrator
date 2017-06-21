@@ -106,6 +106,9 @@ func (b *Bridge) getServicesCopy() map[string][]*Service {
 
 func (b *Bridge) Sync(quiet bool) {
 
+	// Take this to avoid having to use a mutex
+	servicesSnapshot := b.getServicesCopy()
+
 	containers, err := b.docker.ListContainers(dockerapi.ListContainersOptions{})
 	if err != nil && quiet {
 		log.Println("error listing containers, skipping sync")
@@ -113,9 +116,6 @@ func (b *Bridge) Sync(quiet bool) {
 	} else if err != nil && !quiet {
 		log.Fatal(err)
 	}
-
-	// Take this to avoid having to use a mutex
-	servicesSnapshot := b.getServicesCopy()
 
 	log.Printf("Syncing services on %d containers", len(containers))
 
