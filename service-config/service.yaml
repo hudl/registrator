@@ -4,7 +4,6 @@ service:
   name:  registrator
   tribe: foundation
 infrastructure:
-infrastructure:
   placement_constraints:
   - type: distinctInstance
   deployment_options:
