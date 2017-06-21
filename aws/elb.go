@@ -561,6 +561,10 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 		registration.SetMetadataString("aws-instance-id", "")
 	}
 
+	// Reduce lease time for ALBs to have them drop out of eureka quicker
+	registration.LeaseInfo = fargo.LeaseInfo{
+		DurationInSecs: 35,
+	}
 	registration.SetMetadataString("has-elbv2", "true")
 	registration.SetMetadataString("elbv2-endpoint", elbEndpoint)
 	registration.VipAddress = registration.IPAddr
