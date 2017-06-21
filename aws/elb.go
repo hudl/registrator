@@ -14,6 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/aws/aws-sdk-go/service/elbv2"
 
+	"sync"
+
 	"github.com/gliderlabs/registrator/bridge"
 	fargo "github.com/hudl/fargo"
 	gocache "github.com/patrickmn/go-cache"
@@ -36,10 +38,31 @@ type lookupValues struct {
 const DEFAULT_EXP_TIME = 10 * time.Second
 
 var generalCache = gocache.New(DEFAULT_EXP_TIME, DEFAULT_EXP_TIME)
-var previousStatus = make(map[string]fargo.StatusType)
 var refreshInterval int
 
 type any interface{}
+
+//
+// Make eureka status thread-safe
+//
+type eurekaStatus struct {
+	sync.Mutex
+	Mapper map[string]fargo.StatusType
+}
+
+var previousStatus = eurekaStatus{Mapper: make(map[string]fargo.StatusType)}
+
+func getPreviousStatus(containerID string) fargo.StatusType {
+	previousStatus.Lock()
+	defer previousStatus.Unlock()
+	return previousStatus.Mapper[containerID]
+}
+
+func setPreviousStatus(containerID string, status fargo.StatusType) {
+	previousStatus.Lock()
+	defer previousStatus.Unlock()
+	previousStatus.Mapper[containerID] = status
+}
 
 //
 // Provide a general caching mechanism for any function that lasts a few seconds.
@@ -618,12 +641,18 @@ func testStatus(containerID string, eurekaStatus fargo.StatusType, inputStatus f
 
 // Test eureka registration status and mutate registration accordingly depending on container health.
 func testHealth(service *bridge.Service, client fargo.EurekaConnection, elbReg *fargo.Instance) {
+	containerID := service.Origin.ContainerID
+
+	// Get actual eureka status and lookup previous logical registration status
 	eurekaStatus := getELBStatus(client, elbReg)
 	log.Printf("Eureka status check gave: %v", eurekaStatus)
-	containerID := service.Origin.ContainerID
-	last := previousStatus[containerID]
-	previousStatus[containerID], elbReg.Status = testStatus(containerID, eurekaStatus, last)
-	log.Printf("Status health check returned prev: %v registration: %v", previousStatus[containerID], elbReg.Status)
+	last := getPreviousStatus(containerID)
+
+	// Work out an appropriate registration status given previous and current values
+	newStatus, regStatus := testStatus(containerID, eurekaStatus, last)
+	setPreviousStatus(containerID, newStatus)
+	elbReg.Status = regStatus
+	log.Printf("Status health check returned prev: %v registration: %v", last, elbReg.Status)
 }
 
 // RegisterWithELBv2 - If called, and flags are active, register an ELBv2 endpoint instead of the container directly
@@ -666,7 +695,7 @@ func HeartbeatELBv2(service *bridge.Service, registration *fargo.Instance, clien
 		if elbReg != nil {
 			err := client.HeartBeatInstance(elbReg)
 			// If the status of the ELB has not established as up, then recheck the health
-			if previousStatus[service.Origin.ContainerID] != fargo.UP {
+			if getPreviousStatus(service.Origin.ContainerID) != fargo.UP {
 				testHealth(service, client, elbReg)
 				err := client.ReregisterInstance(elbReg)
 				if err != nil {
