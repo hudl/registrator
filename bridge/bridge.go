@@ -209,8 +209,6 @@ func (b *Bridge) deleteDeadContainer(containerId string) {
 }
 
 func (b *Bridge) appendService(containerId string, service *Service) {
-	b.Lock()
-	defer b.Unlock()
 	b.services[containerId] = append(b.services[containerId], service)
 	log.Println("added:", containerId[:12], service.ID)
 }
@@ -218,7 +216,10 @@ func (b *Bridge) appendService(containerId string, service *Service) {
 func (b *Bridge) add(containerId string, quiet bool) {
 	b.deleteDeadContainer(containerId)
 
-	if b.getServicesCopy()[containerId] != nil {
+	b.Lock()
+	defer b.Unlock()
+
+	if b.services[containerId] != nil {
 		log.Println("container, ", containerId[:12], ", already exists, ignoring")
 		// Alternatively, remove and readd or resubmit.
 		return
