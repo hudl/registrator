@@ -36,7 +36,7 @@ type lookupValues struct {
 const DEFAULT_EXP_TIME = 10 * time.Second
 
 var generalCache = gocache.New(DEFAULT_EXP_TIME, DEFAULT_EXP_TIME)
-var previousStatus = fargo.UNKNOWN
+var previousStatus = make(map[string]fargo.StatusType)
 var refreshInterval int
 
 type any interface{}
@@ -617,9 +617,9 @@ func testHealth(service *bridge.Service, client fargo.EurekaConnection, elbReg *
 	eurekaStatus := getELBStatus(client, elbReg)
 	log.Printf("Eureka status check gave: %v", eurekaStatus)
 	containerID := service.Origin.ContainerID
-	last := previousStatus
-	previousStatus, elbReg.Status = testStatus(containerID, eurekaStatus, last)
-	log.Printf("Status health check returned prev: %v registration: %v", previousStatus, elbReg.Status)
+	last := previousStatus[containerID]
+	previousStatus[containerID], elbReg.Status = testStatus(containerID, eurekaStatus, last)
+	log.Printf("Status health check returned prev: %v registration: %v", previousStatus[containerID], elbReg.Status)
 }
 
 // RegisterWithELBv2 - If called, and flags are active, register an ELBv2 endpoint instead of the container directly
@@ -662,7 +662,7 @@ func HeartbeatELBv2(service *bridge.Service, registration *fargo.Instance, clien
 		if elbReg != nil {
 			err := client.HeartBeatInstance(elbReg)
 			// If the status of the ELB has not established as up, then recheck the health
-			if previousStatus != fargo.UP {
+			if previousStatus[service.Origin.ContainerID] != fargo.UP {
 				testHealth(service, client, elbReg)
 				err := client.ReregisterInstance(elbReg)
 				if err != nil {
