@@ -4,6 +4,12 @@ service:
   name:  registrator
   tribe: foundation
 infrastructure:
+infrastructure:
+  placement_constraints:
+  - type: distinctInstance
+  deployment_options:
+    minimum_healthy_percent: 50
+    maximum_percent: 200
   web:
     preferences:
       environment_variables:
