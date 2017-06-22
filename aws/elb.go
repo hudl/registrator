@@ -319,6 +319,7 @@ func lookupServiceName(clusterName string, taskArn string) string {
 	log.Printf("Task definition is: %v", *taskDefArn)
 
 	// Lookup using maximum chunks of 10 service names
+	var matchedServices []*string
 	var servChunk []*string
 	for i := 0; i < len(servicesList); i++ {
 
@@ -337,11 +338,18 @@ func lookupServiceName(clusterName string, taskArn string) string {
 			}
 			for _, ser := range dsout.Services {
 				if *ser.TaskDefinition == *taskDefArn {
-					return *ser.ServiceName
+					matchedServices = append(matchedServices, ser.ServiceName)
 				}
 			}
 			servChunk = nil
 		}
+	}
+	if len(matchedServices) == 1 {
+		return *matchedServices[0]
+	}
+	if len(matchedServices) > 1 {
+		log.Printf("More than one service matches the task definition.  Cannot use fast lookup.")
+		return ""
 	}
 	log.Printf("Service could not be identified")
 	return ""
