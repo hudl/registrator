@@ -121,7 +121,8 @@ func getECSSession() (*ecs.ECS, error) {
 	}
 
 	// Need to set the region here - we'll get it from instance metadata
-	return ecs.New(sess, awssdk.NewConfig().WithRegion("us-east-1")), nil
+	awsMetadata := GetMetadata()
+	return ecs.New(sess, awssdk.NewConfig().WithRegion(awsMetadata.Region)), nil
 }
 
 // Get Load balancer and target group using a service and cluster name (more efficient)
