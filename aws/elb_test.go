@@ -115,6 +115,8 @@ func Test_GetELBV2ForContainer(t *testing.T) {
 	type args struct {
 		containerID string
 		instanceID  string
+		cluster     string
+		task        string
 		port        int64
 	}
 	tests := []struct {
@@ -125,7 +127,7 @@ func Test_GetELBV2ForContainer(t *testing.T) {
 	}{
 		{
 			name:       "should match",
-			args:       args{containerID: "123123412", instanceID: "instance-123", port: int64(1234)},
+			args:       args{containerID: "123123412", instanceID: "instance-123", port: int64(1234), cluster: "cluster", task: "task"},
 			wantErr:    false,
 			wantLbinfo: &lbWant,
 		},
@@ -133,7 +135,7 @@ func Test_GetELBV2ForContainer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotLbinfo, err := GetELBV2ForContainer(tt.args.containerID, tt.args.instanceID, tt.args.port)
+			gotLbinfo, err := GetELBV2ForContainer(tt.args.containerID, tt.args.instanceID, tt.args.port, tt.args.cluster, tt.args.task)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetELBV2ForContainer() error = %+v, wantErr %+v", err, tt.wantErr)
 				return
@@ -323,9 +325,13 @@ func Test_setRegInfo(t *testing.T) {
 		Name:     eureka.Amazon,
 		Metadata: wantedAwsInfo,
 	}
+	wantedLeaseInfo := eureka.LeaseInfo{
+		DurationInSecs: 35,
+	}
 
 	wanted := eureka.Instance{
 		DataCenterInfo: wantedDCInfo,
+		LeaseInfo:      wantedLeaseInfo,
 		Port:           int(lb.Port),
 		App:            svc.Name,
 		IPAddr:         "",
@@ -399,6 +405,9 @@ func Test_setRegInfoExplicitEndpoint(t *testing.T) {
 		Name:     eureka.Amazon,
 		Metadata: awsInfo,
 	}
+	wantedLeaseInfo := eureka.LeaseInfo{
+		DurationInSecs: 35,
+	}
 
 	reg := eureka.Instance{
 		DataCenterInfo: dcInfo,
@@ -429,6 +438,7 @@ func Test_setRegInfoExplicitEndpoint(t *testing.T) {
 	expectedPort, _ := strconv.Atoi(svc.Attrs["eureka_elbv2_port"])
 	wanted := eureka.Instance{
 		DataCenterInfo: wantedDCInfo,
+		LeaseInfo:      wantedLeaseInfo,
 		Port:           expectedPort,
 		App:            svc.Name,
 		IPAddr:         "",
@@ -500,6 +510,9 @@ func Test_setRegInfoELBv2Only(t *testing.T) {
 		Name:     eureka.Amazon,
 		Metadata: awsInfo,
 	}
+	wantedLeaseInfo := eureka.LeaseInfo{
+		DurationInSecs: 35,
+	}
 
 	rawMdInput := []byte(`<is-container>true</is-container>
 		<container-id>container-id-goes-here</container-id>
@@ -547,6 +560,7 @@ func Test_setRegInfoELBv2Only(t *testing.T) {
 
 	wanted := eureka.Instance{
 		DataCenterInfo: wantedDCInfo,
+		LeaseInfo:      wantedLeaseInfo,
 		Port:           int(lb.Port),
 		App:            svc.Name,
 		IPAddr:         "",
