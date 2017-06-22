@@ -8,7 +8,7 @@ infrastructure:
   - type: distinctInstance
   deployment_options:
     minimum_healthy_percent: 50
-    maximum_percent: 200
+    maximum_percent: 100
   web:
     preferences:
       environment_variables:
