@@ -24,7 +24,7 @@ infrastructure:
       log_paths:
       - sourceCategory: app_registrator
         pathExpression: /var/log/app_registrator/**
-        dateFormat: yyyy/MM/dd hh24:mi:ss
+        dateFormat: yyyy-MM-dd HH:mm:ss
       volumes:
       - name: log
         host_path: /var/log/app_registrator
