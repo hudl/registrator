@@ -42,6 +42,15 @@ var refreshInterval int
 
 type any interface{}
 
+// HasNoLoadBalancer - Special error type for when container has no load balancer
+type HasNoLoadBalancer struct {
+	message string
+}
+
+func (e HasNoLoadBalancer) Error() string {
+	return e.message
+}
+
 //
 // Make eureka status thread-safe
 //
@@ -136,6 +145,10 @@ func getLoadBalancerFromService(serviceName string, clusterName string) (*elbv2.
 	if err != nil || out == nil {
 		log.Printf("An error occurred using DescribeServices: %s \n", err.Error())
 		return nil, nil, err
+	}
+	if len(out.Services) == 0 || len(out.Services[0].LoadBalancers) == 0 {
+		hnb := HasNoLoadBalancer{message: "Load balancer not found.  It possibly doesn't exist for this service."}
+		return nil, nil, hnb
 	}
 	tgArn := out.Services[0].LoadBalancers[0].TargetGroupArn
 
