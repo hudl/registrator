@@ -209,6 +209,12 @@ func (b *Bridge) deleteDeadContainer(containerId string) {
 }
 
 func (b *Bridge) appendService(containerId string, service *Service) {
+	b.Lock()
+	defer b.Unlock()
+	if b.services[containerId] != nil {
+		log.Println("container, ", containerId[:12], ", already exists, will not append.")
+		return
+	}
 	b.services[containerId] = append(b.services[containerId], service)
 	log.Println("added:", containerId[:12], service.ID)
 }
@@ -224,6 +230,7 @@ func (b *Bridge) add(containerId string, quiet bool) {
 		// Alternatively, remove and readd or resubmit.
 		return
 	}
+	b.Unlock()
 
 	container, err := b.docker.InspectContainer(containerId)
 	if err != nil {
