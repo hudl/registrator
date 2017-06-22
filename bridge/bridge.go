@@ -223,8 +223,6 @@ func (b *Bridge) add(containerId string, quiet bool) {
 	b.deleteDeadContainer(containerId)
 
 	b.Lock()
-	defer b.Unlock()
-
 	if b.services[containerId] != nil {
 		log.Println("container, ", containerId[:12], ", already exists, ignoring")
 		// Alternatively, remove and readd or resubmit.
