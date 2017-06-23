@@ -116,6 +116,7 @@ func Test_GetELBV2ForContainer(t *testing.T) {
 		containerID string
 		instanceID  string
 		cluster     string
+		service     string
 		task        string
 		port        int64
 	}
@@ -135,7 +136,7 @@ func Test_GetELBV2ForContainer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotLbinfo, err := GetELBV2ForContainer(tt.args.containerID, tt.args.instanceID, tt.args.port, tt.args.cluster, tt.args.task)
+			gotLbinfo, err := GetELBV2ForContainer(tt.args.containerID, tt.args.instanceID, tt.args.port, tt.args.cluster, tt.args.task, tt.args.service)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GetELBV2ForContainer() error = %+v, wantErr %+v", err, tt.wantErr)
 				return

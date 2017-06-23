@@ -208,6 +208,7 @@ SERVICE_EUREKA_ELBV2_HOSTNAME = If set, will explicitly be used as the ELBv2 hos
 SERVICE_EUREKA_ELBV2_PORT = If set, will be explicitly used as the ELBv2 Port - see below.
 SERVICE_EUREKA_ELBV2_TARGETGROUP = If set, will be explicitly used as the ELBv2 TargetGroup - see below.
 SERVICE_EUREKA_ELBV2_ONLY_REGISTRATION = true (if false then adding the ELB hostname and port to each individual container registration will happen).
+SERVICE_EUREKA_ECS_SERVICE = If set, will make the ELBv2 lookups more efficient on ECS.  Should be set to the ECS service name string.
 ```
 
 AWS datacenter metadata will be automatically populated.  _However_, the `InstanceID` will instead be the unique identifier `Host_Port`.  This is due to limitations in the eureka server and fargo library.  

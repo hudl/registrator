@@ -32,6 +32,7 @@ type lookupValues struct {
 	InstanceID  string
 	Port        int64
 	ClusterName string
+	ServiceName string
 	TaskArn     string
 }
 
@@ -223,8 +224,8 @@ func getTargetGroupsPage(svc *elbv2.ELBV2, marker *string) (*elbv2.DescribeTarge
 // if an error occurs, or the target is not found, an empty LBInfo is returned.
 // Pass it the instanceID for the docker host, and the the host port to lookup the associated ELB.
 //
-func GetELBV2ForContainer(containerID string, instanceID string, port int64, clusterName string, taskArn string) (lbinfo *LBInfo, err error) {
-	i := lookupValues{InstanceID: instanceID, Port: port, ClusterName: clusterName, TaskArn: taskArn}
+func GetELBV2ForContainer(containerID string, instanceID string, port int64, clusterName string, taskArn string, serviceName string) (lbinfo *LBInfo, err error) {
+	i := lookupValues{InstanceID: instanceID, Port: port, ClusterName: clusterName, TaskArn: taskArn, ServiceName: serviceName}
 	out, err := getAndCache(containerID, i, getLB, gocache.NoExpiration)
 	if out == nil || err != nil {
 		return nil, err
@@ -383,8 +384,13 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 		return nil, err
 	}
 
+	// We've got a service name already from a label
+	if l.ServiceName != "" {
+		serviceName = l.ServiceName
+	}
+
 	// We've got a clusterName and taskArn so we can lookup the service
-	if l.ClusterName != "" && l.TaskArn != "" {
+	if l.ClusterName != "" && l.TaskArn != "" && l.ServiceName == "" {
 		serviceName = lookupServiceName(l.ClusterName, l.TaskArn)
 		clusterName = l.ClusterName
 	}
@@ -572,6 +578,7 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 		// Check for some ECS labels first, these will allow more efficient lookups
 		var clusterName string
 		var taskArn string
+		var serviceName string
 
 		if service.Attrs["com.amazonaws.ecs.cluster"] != "" {
 			clusterName = service.Attrs["com.amazonaws.ecs.cluster"]
@@ -579,8 +586,12 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 		if service.Attrs["com.amazonaws.ecs.task-arn"] != "" {
 			taskArn = service.Attrs["com.amazonaws.ecs.task-arn"]
 		}
+		// This can be set manually with SERVICE_eureka_ecs_service for a more efficient lookup - amazon don't yet provide it.
+		if service.Attrs["ecs_service"] != "" {
+			serviceName = service.Attrs["ecs_service"]
+		}
 
-		elbMetadata1, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port), clusterName, taskArn)
+		elbMetadata1, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port), clusterName, taskArn, serviceName)
 		if err != nil || elbMetadata1 == nil {
 			log.Printf("Unable to find associated ELBv2 for service: %s, instance: %s hostname: %s port: %v, Error: %s\n", service.Name, awsMetadata.InstanceID, registration.HostName, registration.Port, err)
 			return nil
