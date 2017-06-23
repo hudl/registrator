@@ -1,4 +1,4 @@
-schema: 1.2.0
+schema: 1.2.1
 
 service:
   name:  registrator
