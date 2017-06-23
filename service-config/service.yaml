@@ -16,6 +16,8 @@ infrastructure:
       networking_mode: host
       docker_labels:
       - is-marvel: "false"
+      placementConstraints:
+      - type: distinctInstance
       log_paths:
       - sourceCategory: app_registrator
         pathExpression: /var/log/app_registrator/**
@@ -48,3 +50,4 @@ infrastructure:
     iam:
       managed_policies:
         - hudl-webserver-generic
+
