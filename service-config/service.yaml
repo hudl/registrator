@@ -16,7 +16,7 @@ infrastructure:
       networking_mode: host
       docker_labels:
       - is-marvel: "false"
-      placementConstraints:
+      placement_constraints:
       - type: distinctInstance
       log_paths:
       - sourceCategory: app_registrator
