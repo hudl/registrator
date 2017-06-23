@@ -55,15 +55,15 @@ func (e HasNoLoadBalancer) Error() string {
 // Make eureka status thread-safe
 //
 type eurekaStatus struct {
-	sync.Mutex
+	sync.RWMutex
 	Mapper map[string]fargo.StatusType
 }
 
 var previousStatus = eurekaStatus{Mapper: make(map[string]fargo.StatusType)}
 
 func getPreviousStatus(containerID string) fargo.StatusType {
-	previousStatus.Lock()
-	defer previousStatus.Unlock()
+	previousStatus.RLock()
+	defer previousStatus.RUnlock()
 	return previousStatus.Mapper[containerID]
 }
 
