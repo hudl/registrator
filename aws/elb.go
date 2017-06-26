@@ -3,6 +3,7 @@ package aws
 import (
 	"fmt"
 	"log"
+	"math"
 	"math/rand"
 	"reflect"
 	"strconv"
@@ -10,7 +11,10 @@ import (
 
 	awssdk "github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/aws/aws-sdk-go/service/elbv2"
+
+	"sync"
 
 	"github.com/gliderlabs/registrator/bridge"
 	fargo "github.com/hudl/fargo"
@@ -25,17 +29,50 @@ type LBInfo struct {
 }
 
 type lookupValues struct {
-	InstanceID string
-	Port       int64
+	InstanceID  string
+	Port        int64
+	ClusterName string
+	ServiceName string
+	TaskArn     string
 }
 
 const DEFAULT_EXP_TIME = 10 * time.Second
 
 var generalCache = gocache.New(DEFAULT_EXP_TIME, DEFAULT_EXP_TIME)
-var previousStatus = fargo.UNKNOWN
 var refreshInterval int
 
 type any interface{}
+
+// HasNoLoadBalancer - Special error type for when container has no load balancer
+type HasNoLoadBalancer struct {
+	message string
+}
+
+func (e HasNoLoadBalancer) Error() string {
+	return e.message
+}
+
+//
+// Make eureka status thread-safe
+//
+type eurekaStatus struct {
+	sync.RWMutex
+	Mapper map[string]fargo.StatusType
+}
+
+var previousStatus = eurekaStatus{Mapper: make(map[string]fargo.StatusType)}
+
+func getPreviousStatus(containerID string) fargo.StatusType {
+	previousStatus.RLock()
+	defer previousStatus.RUnlock()
+	return previousStatus.Mapper[containerID]
+}
+
+func setPreviousStatus(containerID string, status fargo.StatusType) {
+	previousStatus.Lock()
+	defer previousStatus.Unlock()
+	previousStatus.Mapper[containerID] = status
+}
 
 //
 // Provide a general caching mechanism for any function that lasts a few seconds.
@@ -75,6 +112,69 @@ func getSession() (*elbv2.ELBV2, error) {
 	// Need to set the region here - we'll get it from instance metadata
 	awsMetadata := GetMetadata()
 	return elbv2.New(sess, awssdk.NewConfig().WithRegion(awsMetadata.Region)), nil
+}
+
+func getECSSession() (*ecs.ECS, error) {
+	sess, err := session.NewSession()
+	if err != nil {
+		message := fmt.Errorf("Failed to create session connecting to AWS: %s", err)
+		return nil, message
+	}
+
+	// Need to set the region here - we'll get it from instance metadata
+	awsMetadata := GetMetadata()
+	return ecs.New(sess, awssdk.NewConfig().WithRegion(awsMetadata.Region)), nil
+}
+
+// Get Load balancer and target group using a service and cluster name (more efficient)
+func getLoadBalancerFromService(serviceName string, clusterName string) (*elbv2.LoadBalancer, *elbv2.TargetGroup, error) {
+
+	dsi := ecs.DescribeServicesInput{
+		Cluster:  &clusterName,
+		Services: []*string{&serviceName},
+	}
+
+	svc, err := getECSSession()
+	if err != nil {
+		return nil, nil, err
+	}
+	svc2, err := getSession()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	out, err := svc.DescribeServices(&dsi)
+	if err != nil || out == nil {
+		log.Printf("An error occurred using DescribeServices: %s \n", err.Error())
+		return nil, nil, err
+	}
+	if len(out.Services) == 0 || len(out.Services[0].LoadBalancers) == 0 {
+		hnb := HasNoLoadBalancer{message: "Load balancer not found.  It possibly doesn't exist for this service."}
+		return nil, nil, hnb
+	}
+	tgArn := out.Services[0].LoadBalancers[0].TargetGroupArn
+
+	// Get the target group listed for the service
+	dtgI := elbv2.DescribeTargetGroupsInput{
+		TargetGroupArns: []*string{tgArn},
+	}
+	out3, err := svc2.DescribeTargetGroups(&dtgI)
+	if err != nil || out3 == nil {
+		log.Printf("An error occurred using DescribeTargetGroups: %s \n", err.Error())
+		return nil, nil, err
+	}
+
+	// Get the load balancer details
+	dlbI := elbv2.DescribeLoadBalancersInput{
+		LoadBalancerArns: out3.TargetGroups[0].LoadBalancerArns,
+	}
+	out2, err := svc2.DescribeLoadBalancers(&dlbI)
+	if err != nil || out2 == nil {
+		log.Printf("An error occurred using DescribeLoadBalancers: %s \n", err.Error())
+		return nil, nil, err
+	}
+
+	return out2.LoadBalancers[0], out3.TargetGroups[0], nil
 }
 
 // Helper function to retrieve all target groups
@@ -124,8 +224,8 @@ func getTargetGroupsPage(svc *elbv2.ELBV2, marker *string) (*elbv2.DescribeTarge
 // if an error occurs, or the target is not found, an empty LBInfo is returned.
 // Pass it the instanceID for the docker host, and the the host port to lookup the associated ELB.
 //
-func GetELBV2ForContainer(containerID string, instanceID string, port int64) (lbinfo *LBInfo, err error) {
-	i := lookupValues{InstanceID: instanceID, Port: port}
+func GetELBV2ForContainer(containerID string, instanceID string, port int64, clusterName string, taskArn string, serviceName string) (lbinfo *LBInfo, err error) {
+	i := lookupValues{InstanceID: instanceID, Port: port, ClusterName: clusterName, TaskArn: taskArn, ServiceName: serviceName}
 	out, err := getAndCache(containerID, i, getLB, gocache.NoExpiration)
 	if out == nil || err != nil {
 		return nil, err
@@ -178,6 +278,84 @@ func getHealthyTargets(tgArn string) (ths []*elbv2.TargetHealthDescription, err 
 	return healthyTargets, nil
 }
 
+// Lookup the service name from the ECS cluster and taskArn.  A bit janky, but works.
+// Would be nice if amazon just put the service name as a label on the container.
+func lookupServiceName(clusterName string, taskArn string) string {
+
+	log.Printf("Looking up service with cluster: %s and taskArn: %s", clusterName, taskArn)
+	svc, err := getECSSession()
+	if err != nil {
+		log.Printf("Unable to get ECS session: %s", err)
+		return ""
+	}
+
+	dti := ecs.DescribeTasksInput{
+		Cluster: &clusterName,
+		Tasks:   []*string{&taskArn},
+	}
+
+	lsi := ecs.ListServicesInput{
+		Cluster: &clusterName,
+	}
+
+	var servicesList []*string
+	err = svc.ListServicesPages(&lsi,
+		func(page *ecs.ListServicesOutput, lastPage bool) bool {
+			for _, s := range page.ServiceArns {
+				servicesList = append(servicesList, s)
+			}
+			return !lastPage
+		})
+	if err != nil || servicesList == nil {
+		log.Printf("Error occurred using ListServicesPages: %s", err)
+		return ""
+	}
+
+	dtout, err := svc.DescribeTasks(&dti)
+	if err != nil || dtout == nil || len(dtout.Tasks) == 0 {
+		log.Printf("Error occurred using DescribeTasks: %s", err)
+		return ""
+	}
+	taskDefArn := dtout.Tasks[0].TaskDefinitionArn
+	log.Printf("Task definition is: %v", *taskDefArn)
+
+	// Lookup using maximum chunks of 10 service names
+	var matchedServices []*string
+	var servChunk []*string
+	for i := 0; i < len(servicesList); i++ {
+
+		servChunk = append(servChunk, servicesList[i])
+		// Make an API call every 10 service names, or on the last iteration over servicesList
+		if (math.Mod(float64(i+1), 10) == 0 && i > 0) || i == (len(servicesList)-1) {
+			dsi := ecs.DescribeServicesInput{
+				Cluster:  &clusterName,
+				Services: servChunk,
+			}
+
+			dsout, err := svc.DescribeServices(&dsi)
+			if err != nil || dsout == nil {
+				log.Printf("Error occurred using DescribeServices: %s", err)
+				return ""
+			}
+			for _, ser := range dsout.Services {
+				if *ser.TaskDefinition == *taskDefArn {
+					matchedServices = append(matchedServices, ser.ServiceName)
+				}
+			}
+			servChunk = nil
+		}
+	}
+	if len(matchedServices) == 1 {
+		return *matchedServices[0]
+	}
+	if len(matchedServices) > 1 {
+		log.Printf("More than one service matches the task definition.  Cannot use fast lookup.")
+		return ""
+	}
+	log.Printf("Service could not be identified")
+	return ""
+}
+
 //
 // Does the real work of retrieving the load balancer details, given a lookupValues struct.
 // Note: This function uses caching extensively to reduce the burden on the AWS API when called from multiple goroutines
@@ -190,6 +368,8 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	var lbPort *int64
 	var tgArn string
 	info := &LBInfo{}
+	var clusterName string
+	var serviceName string
 
 	// Small random wait to reduce risk of throttling
 	seed := rand.NewSource(time.Now().UnixNano())
@@ -204,52 +384,75 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 		return nil, err
 	}
 
-	// TODO Note: There could be thousands of these, and we need to check them all.  Seems to be no
-	// other way to retrieve a TG via instance/port with current API
-
-	out1, err := getAndCache("tg", svc, getAllTargetGroups, DEFAULT_EXP_TIME)
-	if err != nil || out1 == nil {
-		message := fmt.Errorf("Failed to retrieve Target Groups: %s", err)
-		return nil, message
+	// We've got a service name already from a label
+	if l.ServiceName != "" {
+		serviceName = l.ServiceName
 	}
-	tgslice, _ := out1.([]*elbv2.DescribeTargetGroupsOutput)
 
-	// Check each target group's target list for a matching port and instanceID
-	// Assumption: that that there is only one LB for the target group (though the data structure allows more)
-	for _, tgs := range tgslice {
-		log.Printf("%v target groups to check.", len(tgs.TargetGroups))
-		for _, tg := range tgs.TargetGroups {
+	// We've got a clusterName and taskArn so we can lookup the service
+	if l.ClusterName != "" && l.TaskArn != "" && l.ServiceName == "" {
+		serviceName = lookupServiceName(l.ClusterName, l.TaskArn)
+		clusterName = l.ClusterName
+	}
 
-			thParams := &elbv2.DescribeTargetHealthInput{
-				TargetGroupArn: awssdk.String(*tg.TargetGroupArn),
-			}
+	var tgslice []*elbv2.DescribeTargetGroupsOutput
+	if serviceName == "" {
+		// There could be thousands of these, and we need to check them all.
+		// much better to have a service name to use.
 
-			out2, err := getAndCache(*thParams.TargetGroupArn, thParams, svc.DescribeTargetHealth, DEFAULT_EXP_TIME)
-			if err != nil || out2 == nil {
-				log.Printf("An error occurred using DescribeTargetHealth: %s \n", err.Error())
-				return nil, err
-			}
-			tarH, ok := out2.(*elbv2.DescribeTargetHealthOutput)
-			if !ok || tarH.TargetHealthDescriptions == nil {
-				continue
-			}
-			for _, thd := range tarH.TargetHealthDescriptions {
-				if *thd.Target.Port == port && *thd.Target.Id == instanceID {
-					log.Printf("Target group matched - %v", *tg.TargetGroupArn)
-					lbArns = tg.LoadBalancerArns
-					tgArn = *tg.TargetGroupArn
-					break
+		out1, err := getAndCache("tg", svc, getAllTargetGroups, DEFAULT_EXP_TIME)
+		if err != nil || out1 == nil {
+			message := fmt.Errorf("Failed to retrieve Target Groups: %s", err)
+			return nil, message
+		}
+		tgslice, _ = out1.([]*elbv2.DescribeTargetGroupsOutput)
+
+		// Check each target group's target list for a matching port and instanceID
+		// Assumption: that that there is only one LB for the target group (though the data structure allows more)
+		for _, tgs := range tgslice {
+			log.Printf("%v target groups to check.", len(tgs.TargetGroups))
+			for _, tg := range tgs.TargetGroups {
+
+				thParams := &elbv2.DescribeTargetHealthInput{
+					TargetGroupArn: awssdk.String(*tg.TargetGroupArn),
+				}
+
+				out2, err := getAndCache(*thParams.TargetGroupArn, thParams, svc.DescribeTargetHealth, DEFAULT_EXP_TIME)
+				if err != nil || out2 == nil {
+					log.Printf("An error occurred using DescribeTargetHealth: %s \n", err.Error())
+					return nil, err
+				}
+				tarH, ok := out2.(*elbv2.DescribeTargetHealthOutput)
+				if !ok || tarH.TargetHealthDescriptions == nil {
+					continue
+				}
+				for _, thd := range tarH.TargetHealthDescriptions {
+					if *thd.Target.Port == port && *thd.Target.Id == instanceID {
+						log.Printf("Target group matched - %v", *tg.TargetGroupArn)
+						lbArns = tg.LoadBalancerArns
+						tgArn = *tg.TargetGroupArn
+						break
+					}
 				}
 			}
+			if lbArns != nil && tgArn != "" {
+				break
+			}
 		}
-		if lbArns != nil && tgArn != "" {
-			break
-		}
-	}
 
-	if err != nil || lbArns == nil {
-		message := fmt.Errorf("failed to retrieve load balancer ARN")
-		return nil, message
+		if err != nil || lbArns == nil {
+			message := fmt.Errorf("failed to retrieve load balancer ARN")
+			return nil, message
+		}
+
+	} else {
+		// We have the service and cluster name to use
+		lb, tg, err := getLoadBalancerFromService(serviceName, clusterName)
+		if lb == nil || tg == nil || err != nil {
+			return nil, err
+		}
+		tgArn = *tg.TargetGroupArn
+		lbArns = []*string{lb.LoadBalancerArn}
 	}
 
 	// Loop through the load balancer listeners to get the listener port for the target group
@@ -372,8 +575,23 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 
 	} else {
 		// We don't have the ELB endpoint, so look it up.
+		// Check for some ECS labels first, these will allow more efficient lookups
+		var clusterName string
+		var taskArn string
+		var serviceName string
 
-		elbMetadata1, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port))
+		if service.Attrs["com.amazonaws.ecs.cluster"] != "" {
+			clusterName = service.Attrs["com.amazonaws.ecs.cluster"]
+		}
+		if service.Attrs["com.amazonaws.ecs.task-arn"] != "" {
+			taskArn = service.Attrs["com.amazonaws.ecs.task-arn"]
+		}
+		// This can be set manually with SERVICE_eureka_ecs_service for a more efficient lookup - amazon don't yet provide it.
+		if service.Attrs["ecs_service"] != "" {
+			serviceName = service.Attrs["ecs_service"]
+		}
+
+		elbMetadata1, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port), clusterName, taskArn, serviceName)
 		if err != nil || elbMetadata1 == nil {
 			log.Printf("Unable to find associated ELBv2 for service: %s, instance: %s hostname: %s port: %v, Error: %s\n", service.Name, awsMetadata.InstanceID, registration.HostName, registration.Port, err)
 			return nil
@@ -399,6 +617,10 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 		registration.SetMetadataString("aws-instance-id", "")
 	}
 
+	// Reduce lease time for ALBs to have them drop out of eureka quicker
+	registration.LeaseInfo = fargo.LeaseInfo{
+		DurationInSecs: 35,
+	}
 	registration.SetMetadataString("has-elbv2", "true")
 	registration.SetMetadataString("elbv2-endpoint", elbEndpoint)
 	registration.VipAddress = registration.IPAddr
@@ -452,12 +674,18 @@ func testStatus(containerID string, eurekaStatus fargo.StatusType, inputStatus f
 
 // Test eureka registration status and mutate registration accordingly depending on container health.
 func testHealth(service *bridge.Service, client fargo.EurekaConnection, elbReg *fargo.Instance) {
+	containerID := service.Origin.ContainerID
+
+	// Get actual eureka status and lookup previous logical registration status
 	eurekaStatus := getELBStatus(client, elbReg)
 	log.Printf("Eureka status check gave: %v", eurekaStatus)
-	containerID := service.Origin.ContainerID
-	last := previousStatus
-	previousStatus, elbReg.Status = testStatus(containerID, eurekaStatus, last)
-	log.Printf("Status health check returned prev: %v registration: %v", previousStatus, elbReg.Status)
+	last := getPreviousStatus(containerID)
+
+	// Work out an appropriate registration status given previous and current values
+	newStatus, regStatus := testStatus(containerID, eurekaStatus, last)
+	setPreviousStatus(containerID, newStatus)
+	elbReg.Status = regStatus
+	log.Printf("Status health check returned prev: %v registration: %v", last, elbReg.Status)
 }
 
 // RegisterWithELBv2 - If called, and flags are active, register an ELBv2 endpoint instead of the container directly
@@ -500,7 +728,7 @@ func HeartbeatELBv2(service *bridge.Service, registration *fargo.Instance, clien
 		if elbReg != nil {
 			err := client.HeartBeatInstance(elbReg)
 			// If the status of the ELB has not established as up, then recheck the health
-			if previousStatus != fargo.UP {
+			if getPreviousStatus(service.Origin.ContainerID) != fargo.UP {
 				testHealth(service, client, elbReg)
 				err := client.ReregisterInstance(elbReg)
 				if err != nil {
