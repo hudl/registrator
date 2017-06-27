@@ -106,6 +106,9 @@ func (b *Bridge) getServicesCopy() map[string][]*Service {
 
 func (b *Bridge) Sync(quiet bool) {
 
+	// Take this to avoid having to use a mutex
+	servicesSnapshot := b.getServicesCopy()
+
 	containers, err := b.docker.ListContainers(dockerapi.ListContainersOptions{})
 	if err != nil && quiet {
 		log.Println("error listing containers, skipping sync")
@@ -113,9 +116,6 @@ func (b *Bridge) Sync(quiet bool) {
 	} else if err != nil && !quiet {
 		log.Fatal(err)
 	}
-
-	// Take this to avoid having to use a mutex
-	servicesSnapshot := b.getServicesCopy()
 
 	log.Printf("Syncing services on %d containers", len(containers))
 
@@ -211,6 +211,10 @@ func (b *Bridge) deleteDeadContainer(containerId string) {
 func (b *Bridge) appendService(containerId string, service *Service) {
 	b.Lock()
 	defer b.Unlock()
+	if b.services[containerId] != nil {
+		log.Println("container, ", containerId[:12], ", already exists, will not append.")
+		return
+	}
 	b.services[containerId] = append(b.services[containerId], service)
 	log.Println("added:", containerId[:12], service.ID)
 }
@@ -218,11 +222,13 @@ func (b *Bridge) appendService(containerId string, service *Service) {
 func (b *Bridge) add(containerId string, quiet bool) {
 	b.deleteDeadContainer(containerId)
 
-	if b.getServicesCopy()[containerId] != nil {
+	b.Lock()
+	if b.services[containerId] != nil {
 		log.Println("container, ", containerId[:12], ", already exists, ignoring")
 		// Alternatively, remove and readd or resubmit.
 		return
 	}
+	b.Unlock()
 
 	container, err := b.docker.InspectContainer(containerId)
 	if err != nil {
@@ -369,6 +375,13 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	} else {
 		service.Tags = combineTags(
 			mapDefault(metadata, "tags", ""), b.config.ForceTags)
+	}
+
+	// Look for ECS labels and add them to metadata if present
+	for k, v := range container.Config.Labels {
+		if strings.Contains(k, "com.amazonaws.ecs") {
+			metadata[k] = v
+		}
 	}
 
 	id := mapDefault(metadata, "id", "")

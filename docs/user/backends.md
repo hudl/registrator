@@ -208,9 +208,10 @@ SERVICE_EUREKA_ELBV2_HOSTNAME = If set, will explicitly be used as the ELBv2 hos
 SERVICE_EUREKA_ELBV2_PORT = If set, will be explicitly used as the ELBv2 Port - see below.
 SERVICE_EUREKA_ELBV2_TARGETGROUP = If set, will be explicitly used as the ELBv2 TargetGroup - see below.
 SERVICE_EUREKA_ELBV2_ONLY_REGISTRATION = true (if false then adding the ELB hostname and port to each individual container registration will happen).
+SERVICE_EUREKA_ECS_SERVICE = If set, will make the ELBv2 lookups more efficient on ECS.  Should be set to the ECS service name string.
 ```
 
-AWS datacenter metadata will be automatically populated.  _However_, the `InstanceID` will instead match `hostName`, which is the unique identifier for the container (Host_Port).  This is due to limitations in the eureka server.  
+AWS datacenter metadata will be automatically populated.  _However_, the `InstanceID` will instead be the unique identifier `Host_Port`.  This is due to limitations in the eureka server and fargo library.  
 Instead, a new metadata tag, `aws_instanceID` has the underlying host instanceID.
 
 For any of this to work, it requires properly functioning IAM roles for your container host.  On ECS, this will just work  - however, if you are running custom container hosts on EC2 with kubernetes or the like, then it may need further setup for the AWS metadata to work.
@@ -269,7 +270,14 @@ In order for this to work (you will receive a log error if not) the IAM role att
                 "elasticloadbalancing:DescribeTags",
                 "elasticloadbalancing:DescribeTargetGroupAttributes",
                 "elasticloadbalancing:DescribeTargetGroups",
-                "elasticloadbalancing:DescribeTargetHealth"
+                "elasticloadbalancing:DescribeTargetHealth",
+                "ecs:DescribeClusters",
+                "ecs:DescribeServices",
+                "ecs:DescribeTaskDefinition",
+                "ecs:DescribeTasks",
+                "ecs:ListClusters",
+                "ecs:ListServices",
+                "ecs:ListTasks"
             ],
             "Resource": [
                 "*"
