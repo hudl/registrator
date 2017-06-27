@@ -1,4 +1,4 @@
-schema: 1.2.0
+schema: 1.2.1
 
 service:
   name:  registrator
@@ -21,6 +21,8 @@ infrastructure:
       networking_mode: host
       docker_labels:
       - is-marvel: "false"
+      placement_constraints:
+      - type: distinctInstance
       log_paths:
       - sourceCategory: app_registrator
         pathExpression: /var/log/app_registrator/**
@@ -53,3 +55,4 @@ infrastructure:
     iam:
       managed_policies:
         - hudl-webserver-generic
+
