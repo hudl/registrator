@@ -46,7 +46,7 @@ func assert(err error) {
 }
 
 func main() {
-	defer profile.Start(profile.MemProfileRate(2048)).Stop()
+	defer profile.Start(profile.MemProfileRate(300)).Stop()
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
 		versionChecker.PrintVersion()
 		os.Exit(0)
