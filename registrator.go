@@ -47,7 +47,10 @@ func assert(err error) {
 }
 
 func main() {
-	http.ListenAndServe(":8080", http.DefaultServeMux)
+	go func() {
+		http.ListenAndServe(":8080", http.DefaultServeMux)
+	}()
+
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
 		versionChecker.PrintVersion()
 		os.Exit(0)
