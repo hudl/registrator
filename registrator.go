@@ -12,6 +12,7 @@ import (
 	dockerapi "github.com/fsouza/go-dockerclient"
 	"github.com/gliderlabs/pkg/usage"
 	"github.com/gliderlabs/registrator/bridge"
+	"github.com/pkg/profile"
 )
 
 var Version string
@@ -45,6 +46,7 @@ func assert(err error) {
 }
 
 func main() {
+	defer profile.Start(profile.MemProfileRate(2048)).Stop()
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
 		versionChecker.PrintVersion()
 		os.Exit(0)
