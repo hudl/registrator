@@ -8,10 +8,12 @@ import (
 	"os"
 	"strings"
 	"time"
+	"context"
 
-	dockerapi "github.com/fsouza/go-dockerclient"
+	dockerapi "github.com/docker/docker/client"
 	"github.com/gliderlabs/pkg/usage"
 	"github.com/gliderlabs/registrator/bridge"
+	dockertypes "github.com/docker/docker/api/types"
 )
 
 var Version string
@@ -95,7 +97,7 @@ func main() {
 		os.Setenv("DOCKER_HOST", "unix:///tmp/docker.sock")
 	}
 
-	docker, err := dockerapi.NewClientFromEnv()
+	docker, err := dockerapi.NewEnvClient()
 	assert(err)
 
 	if *deregister != "always" && *deregister != "on-success" {
@@ -134,8 +136,8 @@ func main() {
 	}
 
 	// Start event listener before listing containers to avoid missing anything
-	events := make(chan *dockerapi.APIEvents)
-	assert(docker.AddEventListener(events))
+	events, _ := docker.Events(context.Background(), dockertypes.EventsOptions{})
+	//assert(docker.AddEventListener(events))
 	log.Println("Listening for Docker events ...")
 
 	quit := make(chan struct{})

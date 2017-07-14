@@ -5,7 +5,9 @@ import (
 	"strings"
 
 	"github.com/cenkalti/backoff"
-	dockerapi "github.com/fsouza/go-dockerclient"
+	containertypes "github.com/docker/docker/api/types/container"
+	dockertypes "github.com/docker/docker/api/types"
+	"github.com/docker/go-connections/nat"
 )
 
 func retry(fn func() error) error {
@@ -54,7 +56,7 @@ func combineTags(tagParts ...string) []string {
 	return tags
 }
 
-func serviceMetaData(config *dockerapi.Config, port string) (map[string]string, map[string]bool) {
+func serviceMetaData(config *containertypes.Config, port string) (map[string]string, map[string]bool) {
 	meta := config.Labels
 
 	// Env take precedence over labels
@@ -86,7 +88,7 @@ func serviceMetaData(config *dockerapi.Config, port string) (map[string]string, 
 	return metadata, metadataFromPort
 }
 
-func servicePort(container *dockerapi.Container, port dockerapi.Port, published []dockerapi.PortBinding) ServicePort {
+func servicePort(container *dockertypes.ContainerJSON, port nat.Port, published []nat.PortBinding) ServicePort {
 	var hp, hip, ep, ept, eip, nm string
 	if len(published) > 0 {
 		hp = published[0].HostPort
@@ -99,7 +101,7 @@ func servicePort(container *dockerapi.Container, port dockerapi.Port, published 
 	//for overlay networks
 	//detect if container use overlay network, than set HostIP into NetworkSettings.Network[string].IPAddress
 	//better to use registrator with -internal flag
-	nm = container.HostConfig.NetworkMode
+	nm = string(container.HostConfig.NetworkMode)
 	if nm != "bridge" && nm != "default" && nm != "host" {
 		hip = container.NetworkSettings.Networks[nm].IPAddress
 	}

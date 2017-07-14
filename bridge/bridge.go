@@ -12,7 +12,11 @@ import (
 	"strings"
 	"sync"
 
-	dockerapi "github.com/fsouza/go-dockerclient"
+	"context"
+	dockertypes "github.com/docker/docker/api/types"
+	dockerfilters "github.com/docker/docker/api/types/filters"
+	dockerapi "github.com/docker/docker/client"
+	"github.com/docker/go-connections/nat"
 )
 
 var serviceIDPattern = regexp.MustCompile(`^(.+?):([a-zA-Z0-9][a-zA-Z0-9_.-]+):[0-9]+(?::udp)?$`)
@@ -109,7 +113,7 @@ func (b *Bridge) Sync(quiet bool) {
 	// Take this to avoid having to use a mutex
 	servicesSnapshot := b.getServicesCopy()
 
-	containers, err := b.docker.ListContainers(dockerapi.ListContainersOptions{})
+	containers, err := b.docker.ContainerList(context.Background(), dockertypes.ContainerListOptions{})
 	if err != nil && quiet {
 		log.Println("error listing containers, skipping sync")
 		return
@@ -139,8 +143,12 @@ func (b *Bridge) Sync(quiet bool) {
 	if b.config.Cleanup {
 		// Remove services if its corresponding container is not running
 		log.Println("Listing non-exited containers")
-		filters := map[string][]string{"status": {"created", "restarting", "running", "paused"}}
-		nonExitedContainers, err := b.docker.ListContainers(dockerapi.ListContainersOptions{Filters: filters})
+		args := dockerfilters.NewArgs()
+		args.Add("status", "created")
+		args.Add("status", "restarting")
+		args.Add("status", "running")
+		args.Add("status", "paused")
+		nonExitedContainers, err := b.docker.ContainerList(context.Background(), dockertypes.ContainerListOptions{Filters: args})
 		if err != nil {
 			log.Println("error listing nonExitedContainers, skipping sync", err)
 			return
@@ -230,7 +238,7 @@ func (b *Bridge) add(containerId string, quiet bool) {
 	}
 	b.Unlock()
 
-	container, err := b.docker.InspectContainer(containerId)
+	container, err := b.docker.ContainerInspect(context.Background(), containerId)
 	if err != nil {
 		log.Println("unable to inspect container:", containerId[:12], err)
 		return
@@ -240,13 +248,13 @@ func (b *Bridge) add(containerId string, quiet bool) {
 
 	// Extract configured host port mappings, relevant when using --net=host
 	for port, _ := range container.Config.ExposedPorts {
-		published := []dockerapi.PortBinding{{"0.0.0.0", port.Port()}}
-		ports[string(port)] = servicePort(container, port, published)
+ 		published := []nat.PortBinding{ {"0.0.0.0", port.Port()}, }
+		ports[string(port)] = servicePort(&container, port, published)
 	}
 
 	// Extract runtime port mappings, relevant when using --net=bridge
 	for port, published := range container.NetworkSettings.Ports {
-		ports[string(port)] = servicePort(container, port, published)
+		ports[string(port)] = servicePort(&container, port, published)
 	}
 
 	if len(ports) == 0 && !quiet {
@@ -355,10 +363,10 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	// NetworkMode can point to another container (kuberenetes pods)
 	networkMode := container.HostConfig.NetworkMode
 	if networkMode != "" {
-		if strings.HasPrefix(networkMode, "container:") {
-			networkContainerId := strings.Split(networkMode, ":")[1]
+		if strings.HasPrefix(string(networkMode), "container:") {
+			networkContainerId := strings.Split(string(networkMode), ":")[1]
 			log.Println(service.Name + ": detected container NetworkMode, linked to: " + networkContainerId[:12])
-			networkContainer, err := b.docker.InspectContainer(networkContainerId)
+			networkContainer, err := b.docker.ContainerInspect(context.Background(), networkContainerId)
 			if err != nil {
 				log.Println("unable to inspect network container:", networkContainerId[:12], err)
 			} else {
@@ -433,8 +441,8 @@ func (b *Bridge) shouldRemove(containerId string) bool {
 	if b.config.DeregisterCheck == "always" {
 		return true
 	}
-	container, err := b.docker.InspectContainer(containerId)
-	if _, ok := err.(*dockerapi.NoSuchContainer); ok {
+	container, err := b.docker.ContainerInspect(context.Background(), containerId)
+	if dockerapi.IsErrContainerNotFound(err) {
 		// the container has already been removed from Docker
 		// e.g. probabably run with "--rm" to remove immediately
 		// so its exit code is not accessible

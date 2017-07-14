@@ -4,7 +4,7 @@ package bridge
 import (
 	"net/url"
 
-	dockerapi "github.com/fsouza/go-dockerclient"
+	dockertypes "github.com/docker/docker/api/types"
 )
 
 type AdapterFactory interface {
@@ -57,5 +57,5 @@ type ServicePort struct {
 	ContainerHostname string
 	ContainerID       string
 	ContainerName     string
-	container         *dockerapi.Container
+	container         *dockertypes.ContainerJSON
 }
