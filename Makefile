@@ -6,6 +6,8 @@ PROD_RELEASE_TAG=761584570493.dkr.ecr.us-east-1.amazonaws.com/registrator:latest
 TEST_TAG=761584570493.dkr.ecr.us-east-1.amazonaws.com/registrator:$(BRANCH)
 DEPEND=github.com/Masterminds/glide
 
+.PHONY: clean depend build
+
 prep-dev: teardown
 	docker kill reg_eureka; echo Stopped.
 	docker run --rm --name reg_eureka -e "SERVICE_REGISTER=true" -td -p 8090:8080 netflixoss/eureka:1.1.147
@@ -38,3 +40,13 @@ release:
 depend:
 	go get -v $(DEPEND)
 	glide install
+
+clean:
+	if [ -a vendor/ ] ; \
+	then \
+	     rm -R vendor/ ; \
+	fi;
+	if [ -a registrator ] ; \
+	then \
+	     rm registrator ; \
+	fi;
