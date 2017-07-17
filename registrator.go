@@ -60,7 +60,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s [options] <registry URI>\n\n", os.Args[0])
 		flag.PrintDefaults()
-		log.Errorf("Failed to start registrator, options were incorrect.")
+		log.Error("Failed to start registrator, options were incorrect.")
 	}
 
 	if flag.NArg() != 1 {
@@ -76,7 +76,7 @@ func main() {
 	}
 
 	if *hostIp != "" {
-		log.Debugf("Forcing host IP to", *hostIp)
+		log.Debug("Forcing host IP to", *hostIp)
 	}
 
 	if *requireLabel {
@@ -121,7 +121,7 @@ func main() {
 
 	attempt := 0
 	for *retryAttempts == -1 || attempt <= *retryAttempts {
-		log.Debug("Connecting to backend (%v/%v)", attempt, *retryAttempts)
+		log.Debugf("Connecting to backend (%v/%v)", attempt, *retryAttempts)
 
 		err = b.Ping()
 		if err == nil {

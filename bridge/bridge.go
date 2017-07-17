@@ -116,7 +116,7 @@ func (b *Bridge) Sync(quiet bool) {
 		log.Fatal(err)
 	}
 
-	log.Debug("Syncing services on %d containers", len(containers))
+	log.Debugf("Syncing services on %d containers", len(containers))
 
 	// NOTE: This assumes reregistering will do the right thing, i.e. nothing..
 	for _, listing := range containers {
@@ -154,7 +154,7 @@ func (b *Bridge) Sync(quiet bool) {
 			}
 			// This is a container that does not exist
 			if !found {
-				log.Debug("stale: Removing service %s because it does not exist", listingId)
+				log.Debugf("stale: Removing service %s because it does not exist", listingId)
 				go b.RemoveOnExit(listingId)
 			}
 		}
@@ -211,11 +211,11 @@ func (b *Bridge) appendService(containerId string, service *Service) {
 	b.Lock()
 	defer b.Unlock()
 	if b.services[containerId] != nil {
-		log.Debugf("container, ", containerId[:12], ", already exists, will not append.")
+		log.Debug("container, ", containerId[:12], ", already exists, will not append.")
 		return
 	}
 	b.services[containerId] = append(b.services[containerId], service)
-	log.Debugf("added:", containerId[:12], service.ID)
+	log.Debug("added:", containerId[:12], service.ID)
 }
 
 func (b *Bridge) add(containerId string, quiet bool) {
@@ -249,7 +249,7 @@ func (b *Bridge) add(containerId string, quiet bool) {
 	}
 
 	if len(ports) == 0 && !quiet {
-		log.Debugf("ignored:", container.ID[:12], "no published ports")
+		log.Debug("ignored:", container.ID[:12], "no published ports")
 		return
 	}
 
@@ -311,7 +311,7 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 
 	if b.config.RequireLabel {
 		if strings.ToLower(mapDefault(metadata, "register", "false")) == "false" {
-			log.Debug("Did not find label SERVICE_REGISTER on %s - ignoring.", container.Name)
+			log.Debugf("Did not find label SERVICE_REGISTER on %s - ignoring.", container.Name)
 			return nil
 		}
 	}
@@ -398,7 +398,7 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 }
 
 func (b *Bridge) remove(containerId string, deregister bool) {
-	log.Debug("container stop detected for: %v", containerId)
+	log.Debugf("container stop detected for: %v", containerId)
 	b.Lock()
 	defer b.Unlock()
 

@@ -57,7 +57,7 @@ func (r *ConsulKVAdapter) Register(service *bridge.Service) error {
 	path := r.path[1:] + "/" + service.Name + "/" + service.ID
 	port := strconv.Itoa(service.Port)
 	addr := net.JoinHostPort(service.IP, port)
-	log.Debug("path: %s", path)
+	log.Debugf("path: %s", path)
 	_, err := r.client.KV().Put(&consulapi.KVPair{Key: path, Value: []byte(addr)}, nil)
 	if err != nil {
 		log.Error("consulkv: failed to register service:", err)
