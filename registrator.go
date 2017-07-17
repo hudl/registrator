@@ -33,6 +33,9 @@ var retryAttempts = flag.Int("retry-attempts", 0, "Max retry attempts to establi
 var retryInterval = flag.Int("retry-interval", 2000, "Interval (in millisecond) between retry-attempts.")
 var cleanup = flag.Bool("cleanup", false, "Remove dangling services")
 var requireLabel = flag.Bool("require-label", false, "Only register containers which have the SERVICE_REGISTER label, and ignore all others.")
+var verbose = flag.Bool("verbose", false, "The default log level is Info, Verbose will enable debug logging.")
+
+
 
 func getopt(name, def string) string {
 	if env := os.Getenv(name); env != "" {
@@ -46,14 +49,37 @@ func assert(err error) {
 		log.Fatal(err)
 	}
 }
+func configureLogging(verbose bool) {
+	log.SetFormatter(golog.MustStringFormatter("[path=%{shortfile}] [0x%{id:x}] [level=%{level}] [module=%{module}] [app=registrator] [func=%{shortfunc}] %{message}"))
+	stdoutLogBackend := golog.NewLogBackend(os.Stdout, "", stdlog.LstdFlags|stdlog.Lmicroseconds)
+	stdoutLogBackend.Color = true
+	log.SetBackend(stdoutLogBackend, fileLogBackend)
+	logFile, err := os.OpenFile("/log/registrator.log", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
+	fileLogBackend := golog.NewLogBackend(logFile, "", stdlog.LstdFlags|stdlog.Lmicroseconds)
+	fileLogBackend.Color = false
+	log.SetBackend(stdoutLogBackend, fileLogBackend)
+}
+
+func setLogLevels(verboselogging bool) {
+	if verboselogging == true {
+		golog.SetLevel(log.Debug, "")
+	} else {
+		golog.SetLevel(log.Info, "")
+	}
+}
 
 func main() {
+
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
 		versionChecker.PrintVersion()
 		os.Exit(0)
 	}
+	
 	flag.Parse()
-
+	
+	configureLogging()
+	setLogLevels()
+	
 	log.Debugf("Starting registrator %s ...", Version)
 
 	flag.Usage = func() {
