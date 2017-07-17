@@ -78,7 +78,7 @@ func main() {
 	flag.Parse()
 	
 	configureLogging()
-	setLogLevels()
+	setLogLevels(verbose)
 	
 	log.Debugf("Starting registrator %s ...", Version)
 

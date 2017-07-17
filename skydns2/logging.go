@@ -1,7 +1,7 @@
-package skydns
+package skydnss
 
 import (
 	"github.com/op/go-logging"
 )
 
-var log = logging.MustGetLogger("skydns")
+var log = logging.MustGetLogger("skydns2")
