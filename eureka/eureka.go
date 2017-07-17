@@ -40,7 +40,7 @@ func (r *EurekaAdapter) Ping() error {
 	if err != nil {
 		return err
 	}
-	log.Println("eureka: current apps ", len(eurekaApps))
+	log.Debug("eureka: current apps ", len(eurekaApps))
 
 	return nil
 }
@@ -55,7 +55,7 @@ func checkBooleanFlag(service *bridge.Service, flag string) bool {
 	if service.Attrs[flag] != "" {
 		v, err := strconv.ParseBool(service.Attrs[flag])
 		if err != nil {
-			log.Printf("eureka: %s must be valid boolean, was %v : %s", flag, v, err)
+			log.Errorf("eureka: %s must be valid boolean, was %v : %s", flag, v, err)
 			return false
 		}
 		return true
@@ -82,7 +82,7 @@ func instanceInformation(service *bridge.Service) *fargo.Instance {
 	if service.Attrs["eureka_leaseinfo_renewalintervalinsecs"] != "" {
 		v, err := strconv.Atoi(service.Attrs["eureka_leaseinfo_renewalintervalinsecs"])
 		if err != nil {
-			log.Println("eureka: Renewal interval must be valid int", err)
+			log.Error("eureka: Renewal interval must be valid int", err)
 		} else {
 			registration.LeaseInfo.RenewalIntervalInSecs = int32(v)
 		}
@@ -94,7 +94,7 @@ func instanceInformation(service *bridge.Service) *fargo.Instance {
 	if service.Attrs["eureka_leaseinfo_durationinsecs"] != "" {
 		v, err := strconv.Atoi(service.Attrs["eureka_leaseinfo_durationinsecs"])
 		if err != nil {
-			log.Println("eureka: Lease duration must be valid int", err)
+			log.Error("eureka: Lease duration must be valid int", err)
 		} else {
 			registration.LeaseInfo.DurationInSecs = int32(v)
 		}
@@ -180,7 +180,7 @@ func (r *EurekaAdapter) Deregister(service *bridge.Service) error {
 	}
 	// Don't deregister ALB registrations.  Just leave them to expire if there are no heartbeats
 	if !aws.CheckELBFlags(service) {
-		log.Println("Deregistering", GetUniqueID(*registration))
+		log.Debug("Deregistering", GetUniqueID(*registration))
 		err := r.client.DeregisterInstance(registration)
 		return err
 	}
@@ -195,9 +195,9 @@ func (r *EurekaAdapter) Refresh(service *bridge.Service) error {
 	} else {
 		err := r.client.HeartBeatInstance(registration)
 		if err != nil {
-			log.Println("Error occurred when heartbeating:", GetUniqueID(*registration))
+			log.Error("Error occurred when heartbeating:", GetUniqueID(*registration))
 		} else {
-			log.Println("Done heartbeating for:", GetUniqueID(*registration))
+			log.Debug("Done heartbeating for:", GetUniqueID(*registration))
 		}
 		return err
 	}

@@ -2,7 +2,6 @@ package aws
 
 import (
 	"fmt"
-	"log"
 	"sync"
 
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
@@ -33,7 +32,7 @@ func SetMetadata(md *Metadata) {
 func getDataOrFail(svc interfaces.EC2MetadataGetter, key string) string {
 	val, err := svc.GetMetadata(key)
 	if err != nil {
-		log.Printf("Unable to retrieve %s from the EC2 instance: %s\n", key, err)
+		log.Errorf("Unable to retrieve %s from the EC2 instance: %s\n", key, err)
 		return ""
 	}
 	return val
@@ -46,7 +45,7 @@ func GetMetadata() *Metadata {
 	once.Do(func() {
 		sess, err := session.NewSession()
 		if err != nil {
-			log.Printf("Unable to connect to the EC2 metadata service: %s\n", err)
+			log.Errorf("Unable to connect to the EC2 metadata service: %s\n", err)
 		}
 		svc := ec2metadata.New(sess)
 		metadataCache = retrieveMetadata(svc)
@@ -56,7 +55,7 @@ func GetMetadata() *Metadata {
 
 // RetrieveMetadata - retrieve metadata from AWS about the current host, using IAM role
 func retrieveMetadata(svc interfaces.EC2MetadataGetter) *Metadata {
-	log.Println("Attempting to retrieve AWS metadata.")
+	log.Debugf("Attempting to retrieve AWS metadata.")
 
 	m := new(Metadata)
 

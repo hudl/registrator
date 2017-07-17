@@ -47,20 +47,20 @@ func (r *ConsulKVAdapter) Ping() error {
 	if err != nil {
 		return err
 	}
-	log.Println("consulkv: current leader ", leader)
+	log.Debug("consulkv: current leader ", leader)
 
 	return nil
 }
 
 func (r *ConsulKVAdapter) Register(service *bridge.Service) error {
-	log.Println("Register")
+	log.Debug("Register")
 	path := r.path[1:] + "/" + service.Name + "/" + service.ID
 	port := strconv.Itoa(service.Port)
 	addr := net.JoinHostPort(service.IP, port)
-	log.Printf("path: %s", path)
+	log.Debug("path: %s", path)
 	_, err := r.client.KV().Put(&consulapi.KVPair{Key: path, Value: []byte(addr)}, nil)
 	if err != nil {
-		log.Println("consulkv: failed to register service:", err)
+		log.Error("consulkv: failed to register service:", err)
 	}
 	return err
 }
@@ -69,7 +69,7 @@ func (r *ConsulKVAdapter) Deregister(service *bridge.Service) error {
 	path := r.path[1:] + "/" + service.Name + "/" + service.ID
 	_, err := r.client.KV().Delete(path, nil)
 	if err != nil {
-		log.Println("consulkv: failed to deregister service:", err)
+		log.Error("consulkv: failed to deregister service:", err)
 	}
 	return err
 }

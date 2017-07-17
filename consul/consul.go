@@ -70,7 +70,7 @@ func (r *ConsulAdapter) Ping() error {
 	if err != nil {
 		return err
 	}
-	log.Println("consul: current leader ", leader)
+	log.Debug("consul: current leader ", leader)
 
 	return nil
 }

@@ -4,15 +4,18 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/op/go-logging"
 
 	dockerapi "github.com/fsouza/go-dockerclient"
 	"github.com/gliderlabs/pkg/usage"
 	"github.com/gliderlabs/registrator/bridge"
 )
+
+var log = logging.MustGetLogger("main")
 
 var Version string
 
@@ -51,13 +54,13 @@ func main() {
 	}
 	flag.Parse()
 
-	log.Printf("Starting registrator %s ...", Version)
+	log.Debugf("Starting registrator %s ...", Version)
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  %s [options] <registry URI>\n\n", os.Args[0])
 		flag.PrintDefaults()
-		log.Printf("Failed to start registrator, options were incorrect.")
+		log.Errorf("Failed to start registrator, options were incorrect.")
 	}
 
 	if flag.NArg() != 1 {
@@ -73,11 +76,11 @@ func main() {
 	}
 
 	if *hostIp != "" {
-		log.Println("Forcing host IP to", *hostIp)
+		log.Debugf("Forcing host IP to", *hostIp)
 	}
 
 	if *requireLabel {
-		log.Printf("SERVICE_REGISTER label is required to register containers.")
+		log.Info("SERVICE_REGISTER label is required to register containers.")
 	}
 
 	if (*refreshTtl == 0 && *refreshInterval > 0) || (*refreshTtl > 0 && *refreshInterval == 0) {
@@ -118,7 +121,7 @@ func main() {
 
 	attempt := 0
 	for *retryAttempts == -1 || attempt <= *retryAttempts {
-		log.Printf("Connecting to backend (%v/%v)", attempt, *retryAttempts)
+		log.Debug("Connecting to backend (%v/%v)", attempt, *retryAttempts)
 
 		err = b.Ping()
 		if err == nil {
@@ -136,7 +139,7 @@ func main() {
 	// Start event listener before listing containers to avoid missing anything
 	events := make(chan *dockerapi.APIEvents)
 	assert(docker.AddEventListener(events))
-	log.Println("Listening for Docker events ...")
+	log.Debug("Listening for Docker events ...")
 
 	quit := make(chan struct{})
 
@@ -201,5 +204,5 @@ func main() {
 	}
 
 	close(quit)
-	log.Fatal("Docker event loop closed") // todo: reconnect?
+	log.Critical("Docker event loop closed") // todo: reconnect?
 }
