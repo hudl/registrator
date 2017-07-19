@@ -55,7 +55,7 @@ func GetMetadata() *Metadata {
 
 // RetrieveMetadata - retrieve metadata from AWS about the current host, using IAM role
 func retrieveMetadata(svc interfaces.EC2MetadataGetter) *Metadata {
-	log.Debugf("Attempting to retrieve AWS metadata.")
+	log.Debug("Attempting to retrieve AWS metadata.")
 
 	m := new(Metadata)
 

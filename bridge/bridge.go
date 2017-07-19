@@ -66,7 +66,7 @@ func (b *Bridge) Refresh() {
 		for _, service := range services {
 			err := b.registry.Refresh(service)
 			if err != nil {
-				log.Errorf("refresh failed:", service.ID, err)
+				log.Error("refresh failed:", service.ID, err)
 				continue
 			}
 			log.Debug("refreshed:", containerId[:12], service.ID)
