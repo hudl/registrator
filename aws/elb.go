@@ -281,7 +281,7 @@ func getHealthyTargets(tgArn string) (ths []*elbv2.TargetHealthDescription, err 
 // Would be nice if amazon just put the service name as a label on the container.
 func lookupServiceName(clusterName string, taskArn string) string {
 
-	log.Errorf("Looking up service with cluster: %s and taskArn: %s", clusterName, taskArn)
+	log.Debugf("Looking up service with cluster: %s and taskArn: %s", clusterName, taskArn)
 	svc, err := getECSSession()
 	if err != nil {
 		log.Errorf("Unable to get ECS session: %s", err)
