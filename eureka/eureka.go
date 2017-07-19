@@ -1,7 +1,6 @@
 package eureka
 
 import (
-	"log"
 	"net/url"
 	"strconv"
 	"strings"

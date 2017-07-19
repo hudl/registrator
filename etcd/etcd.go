@@ -2,7 +2,6 @@ package etcd
 
 import (
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/url"

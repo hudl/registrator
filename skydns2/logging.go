@@ -1,4 +1,4 @@
-package skydnss
+package skydns2
 
 import (
 	"github.com/op/go-logging"

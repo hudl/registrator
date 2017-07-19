@@ -1,7 +1,6 @@
 package consul
 
 import (
-	"log"
 	"net"
 	"net/url"
 	"strconv"

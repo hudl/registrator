@@ -2,7 +2,6 @@ package zookeeper
 
 import (
 	"encoding/json"
-	"log"
 	"net/url"
 	"strconv"
 	"time"

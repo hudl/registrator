@@ -2,7 +2,6 @@ package consul
 
 import (
 	"fmt"
-	"log"
 	"net/url"
 	"strings"
 	"os"
