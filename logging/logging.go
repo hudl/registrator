@@ -21,4 +21,5 @@ func Configure(enableVerbose bool) {
 	}
 
 	golog.SetLevel(logLevel, "")
+	golog.SetLevel(logLevel, "fargo")
 }
