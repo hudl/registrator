@@ -192,7 +192,7 @@ func (b *Bridge) Sync(quiet bool) {
 				log.Error("deregister failed:", extService.ID, err)
 				continue
 			}
-			log.Debug(extService.ID, "removed")
+			log.Infof("During cleanup dangling %s removed", extService.ID)
 		}
 	}
 }

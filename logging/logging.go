@@ -14,20 +14,7 @@ func Configure(enableVerbose bool) {
 	stdoutLogBackend := golog.NewLogBackend(os.Stdout, "", stdlog.LstdFlags|stdlog.Lmicroseconds)
 	stdoutLogBackend.Color = true
 
-	// NOTE these file permissions are restricted by umask, so they probably won't work right.
-	err := os.MkdirAll("./log", 0775)
-	if err != nil {
-		panic(err)
-	}
-	logFile, err := os.OpenFile("./log/registrator.log", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
-	if err != nil {
-		panic(err)
-	}
-
-	fileLogBackend := golog.NewLogBackend(logFile, "", stdlog.LstdFlags|stdlog.Lmicroseconds)
-	fileLogBackend.Color = false
-
-	golog.SetBackend(stdoutLogBackend, fileLogBackend)
+	golog.SetBackend(stdoutLogBackend)
 
 	if enableVerbose {
 		logLevel = golog.DEBUG
