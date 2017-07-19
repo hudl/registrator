@@ -536,7 +536,7 @@ func Test_setRegInfoELBv2Only(t *testing.T) {
 	}
 	// Force parsing of metadata
 	err, val := reg.Metadata.GetString("is-container")
-	log.Debug("container-id is %v\n", val)
+	log.Debugf("container-id is %v\n", val)
 	if err != "" {
 		t.Errorf("Unable to parse metadata")
 	}
