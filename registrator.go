@@ -34,7 +34,6 @@ var retryAttempts = flag.Int("retry-attempts", 0, "Max retry attempts to establi
 var retryInterval = flag.Int("retry-interval", 2000, "Interval (in millisecond) between retry-attempts.")
 var cleanup = flag.Bool("cleanup", false, "Remove dangling services")
 var requireLabel = flag.Bool("require-label", false, "Only register containers which have the SERVICE_REGISTER label, and ignore all others.")
-var verbose = flag.Bool("verbose", false, "The default log level is Info, Verbose will enable debug logging. You can also set the REGISTRATOR_VERBOSE environment variable.")
 
 func getopt(name, def string) string {
 	if env := os.Getenv(name); env != "" {
@@ -56,14 +55,10 @@ func main() {
 	}
 	
 	flag.Parse()
-	logVerbose := *verbose
-	if len(os.Getenv("REGISTRATOR_VERBOSE")) > 0 {
-		logVerbose = true
-	}
 
-	logging.Configure(logVerbose)
+	logging.Configure()
 
-	log.Debugf("Starting registrator %s ...", Version)
+	log.Infof("Starting registrator %s ...", Version)
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])

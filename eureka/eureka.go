@@ -18,7 +18,7 @@ func init() {
 
 type Factory struct{}
 
-func (f *Factory) New(uri *url.URL) bridge.RegistryAdapter {
+func (f *Factory) New(uri *url.URL) bridge.RegistryAdapter {	
 	client := fargo.EurekaConnection{}
 	if uri.Host != "" {
 		client = fargo.NewConn("http://" + uri.Host + uri.Path)
