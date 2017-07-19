@@ -5,15 +5,28 @@ DEV_RUN_OPTS ?=-ttl 60 -ttl-refresh 30 -require-label -ip 127.0.0.1 -resync 30 e
 PROD_RELEASE_TAG=761584570493.dkr.ecr.us-east-1.amazonaws.com/registrator:latest
 TEST_TAG=761584570493.dkr.ecr.us-east-1.amazonaws.com/registrator:$(BRANCH)
 
-dev:
-	docker kill reg_eureka; echo Stopped.
+prep-dev: teardown
 	docker run --rm --name reg_eureka -e "SERVICE_REGISTER=true" -td -p 8090:8080 netflixoss/eureka:1.1.147
 	docker build -f Dockerfile.dev -t $(NAME):dev .
+
+teardown:
+	docker kill reg_eureka
+
+dev: prep-dev dev-run teardown
+dev-verbose: prep-dev dev-run-verbose teardown
+
+dev-run:
 	docker run -ti --rm \
 		--net=host \
 		-v /var/run/docker.sock:/tmp/docker.sock \
 		$(NAME):dev $(DEV_RUN_OPTS)
-	docker kill reg_eureka
+
+dev-run-verbose:
+	docker run -ti --rm \
+		--net=host \
+		-v /var/run/docker.sock:/tmp/docker.sock \
+		-e "REGISTRATOR_VERBOSE=true" \
+		$(NAME):dev $(DEV_RUN_OPTS)
 
 build:
 	mkdir -p build
@@ -27,4 +40,3 @@ test:
 release:
 	docker build -t $(PROD_RELEASE_TAG) .
 	docker push $(PROD_RELEASE_TAG)
-
