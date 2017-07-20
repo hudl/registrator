@@ -167,7 +167,7 @@ func (r *EurekaAdapter) Register(service *bridge.Service) error {
 	registration := instanceInformation(service)
 	var instance error
 	if aws.CheckELBFlags(service) {
-		log.Info("Registering ELB", GetUniqueID(*registration))
+		log.Info("Registering ELB for instance", GetUniqueID(*registration))
 		instance = aws.RegisterWithELBv2(service, registration, r.client)
 	} else {
 		log.Info("Registering instance", GetUniqueID(*registration))
