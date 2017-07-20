@@ -9,9 +9,8 @@ import (
 )
 
 func Configure() {
-	golog.SetFormatter(golog.MustStringFormatter("[path=%{shortfile}] [0x%{id:x}] [level=%{level}] [module=%{module}] [app=alyx3] [func=%{shortfunc}] %{message}"))
+	golog.SetFormatter(golog.MustStringFormatter("[path=%{shortfile}] [level=%{level}] %{message}"))
 	stdoutLogBackend := golog.NewLogBackend(os.Stdout, "", stdlog.LstdFlags|stdlog.Lmicroseconds)
-	stdoutLogBackend.Color = true
 	golog.SetBackend(stdoutLogBackend)
 
 	golog.SetLevel(getEnvLogLevel("REGISTRATOR_LOG_LEVEL",golog.INFO), "")
