@@ -14,6 +14,8 @@ infrastructure:
       environment_variables:
       - SERVICE_EUREKA_lookup_elbv2_endpoint: "false"
       - SERVICE_REGISTER: "true"
+      - REGISTRATOR_LOG_LEVEL: "INFO"
+      - FARGO_LOG_LEVEL: "NOTICE"
     requirements:
       cpu_units: 10
       soft_memory_limit: 128

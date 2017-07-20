@@ -8,6 +8,5 @@ exec 2> >(tee -a ${LOG_FILE} >&2)
 # Needs to run inside the container
 
 CMD="/bin/registrator $@"
-echo Running: $CMD
 $CMD
 

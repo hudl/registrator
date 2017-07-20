@@ -2,7 +2,6 @@ package etcd
 
 import (
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -37,7 +36,7 @@ func (f *Factory) New(uri *url.URL) bridge.RegistryAdapter {
 	body, _ := ioutil.ReadAll(res.Body)
 
 	if match, _ := regexp.Match("0\\.4\\.*", body); match == true {
-		log.Println("etcd: using v0 client")
+		log.Debug("etcd: using v0 client")
 		return &EtcdAdapter{client: etcd.NewClient(urls), path: uri.Path}
 	}
 
@@ -78,7 +77,7 @@ func (r *EtcdAdapter) syncEtcdCluster() {
 	}
 
 	if !result {
-		log.Println("etcd: sync cluster was unsuccessful")
+		log.Debug("etcd: sync cluster was unsuccessful")
 	}
 }
 
@@ -97,7 +96,7 @@ func (r *EtcdAdapter) Register(service *bridge.Service) error {
 	}
 
 	if err != nil {
-		log.Println("etcd: failed to register service:", err)
+		log.Error("etcd: failed to register service:", err)
 	}
 	return err
 }
@@ -115,7 +114,7 @@ func (r *EtcdAdapter) Deregister(service *bridge.Service) error {
 	}
 
 	if err != nil {
-		log.Println("etcd: failed to deregister service:", err)
+		log.Error("etcd: failed to deregister service:", err)
 	}
 	return err
 }

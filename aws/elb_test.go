@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"testing"
 
-	"log"
-
 	"github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/gliderlabs/registrator/bridge"
 	eureka "github.com/hudl/fargo"
@@ -538,7 +536,7 @@ func Test_setRegInfoELBv2Only(t *testing.T) {
 	}
 	// Force parsing of metadata
 	err, val := reg.Metadata.GetString("is-container")
-	log.Printf("container-id is %v\n", val)
+	log.Debugf("container-id is %v\n", val)
 	if err != "" {
 		t.Errorf("Unable to parse metadata")
 	}

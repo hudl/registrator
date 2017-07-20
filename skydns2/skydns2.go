@@ -1,7 +1,6 @@
 package skydns2
 
 import (
-	"log"
 	"net/url"
 	"strconv"
 	"strings"
@@ -48,7 +47,7 @@ func (r *Skydns2Adapter) Register(service *bridge.Service) error {
 	record := `{"host":"` + service.IP + `","port":` + port + `}`
 	_, err := r.client.Set(r.servicePath(service), record, uint64(service.TTL))
 	if err != nil {
-		log.Println("skydns2: failed to register service:", err)
+		log.Error("skydns2: failed to register service:", err)
 	}
 	return err
 }
@@ -56,7 +55,7 @@ func (r *Skydns2Adapter) Register(service *bridge.Service) error {
 func (r *Skydns2Adapter) Deregister(service *bridge.Service) error {
 	_, err := r.client.Delete(r.servicePath(service), false)
 	if err != nil {
-		log.Println("skydns2: failed to register service:", err)
+		log.Error("skydns2: failed to register service:", err)
 	}
 	return err
 }
