@@ -167,8 +167,10 @@ func (r *EurekaAdapter) Register(service *bridge.Service) error {
 	registration := instanceInformation(service)
 	var instance error
 	if aws.CheckELBFlags(service) {
+		log.Info("Registering ELB", GetUniqueID(*registration))
 		instance = aws.RegisterWithELBv2(service, registration, r.client)
 	} else {
+		log.Info("Registering instance", GetUniqueID(*registration))
 		instance = r.client.RegisterInstance(registration)
 	}
 	return instance
@@ -181,7 +183,7 @@ func (r *EurekaAdapter) Deregister(service *bridge.Service) error {
 	}
 	// Don't deregister ALB registrations.  Just leave them to expire if there are no heartbeats
 	if !aws.CheckELBFlags(service) {
-		log.Debug("Deregistering", GetUniqueID(*registration))
+		log.Info("Deregistering", GetUniqueID(*registration))
 		err := r.client.DeregisterInstance(registration)
 		return err
 	}

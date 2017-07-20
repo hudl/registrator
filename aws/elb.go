@@ -662,7 +662,7 @@ func testStatus(containerID string, eurekaStatus fargo.StatusType, inputStatus f
 			return fargo.UNKNOWN, fargo.STARTING
 		}
 		if len(thList) == 0 {
-			log.Debugf("Waiting on a healthy target in TG: %s - currently all UNHEALTHY.  Setting eureka state to STARTING.  This is normal for a new service which is starting up.  It may indicate a problem otherwise.", elbMetadata.TargetGroupArn)
+			log.Infof("Waiting on a healthy target in TG: %s - currently all UNHEALTHY.  Setting eureka state to STARTING.  This is normal for a new service which is starting up.  It may indicate a problem otherwise.", elbMetadata.TargetGroupArn)
 			return fargo.STARTING, fargo.STARTING
 		}
 		log.Debugf("Found %v healthy targets for target group: %s.  Setting eureka state to UP.", len(thList), elbMetadata.TargetGroupArn)
@@ -731,7 +731,7 @@ func HeartbeatELBv2(service *bridge.Service, registration *fargo.Instance, clien
 				testHealth(service, client, elbReg)
 				err := client.ReregisterInstance(elbReg)
 				if err != nil {
-					log.Debugf("An error occurred when attempting to reregister ELB: %s", err)
+					log.Errorf("An error occurred when attempting to reregister ELB: %s", err)
 					return err
 				}
 			}
