@@ -1,4 +1,4 @@
-# Registrator
+# Registrator - CLA Test
 
 Service registry bridge for Docker.
 
