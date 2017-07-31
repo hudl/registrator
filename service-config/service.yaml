@@ -4,11 +4,6 @@ service:
   name:  registrator
   tribe: foundation
 infrastructure:
-  placement_constraints:
-  - type: distinctInstance
-  deployment_options:
-    minimum_healthy_percent: 50
-    maximum_percent: 100
   web:
     preferences:
       environment_variables:
@@ -23,6 +18,9 @@ infrastructure:
       networking_mode: host
       docker_labels:
       - is-marvel: "false"
+      deployment_options:
+        minimum_healthy_percent: 50
+        maximum_percent: 100
       placement_constraints:
       - type: distinctInstance
       log_paths:
