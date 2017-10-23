@@ -1,4 +1,4 @@
-schema: 1.2.1
+schema: 1.3.1
 
 service:
   name:  registrator
@@ -53,6 +53,5 @@ infrastructure:
         container_path: /tmp/docker.sock
         read_only: true
     iam:
-      managed_policies:
-        - hudl-webserver-generic
+      role: $environmentprefix-$service-ecs
 
