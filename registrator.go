@@ -1,5 +1,5 @@
 package main
-
+import _ "net/http/pprof"
 import (
 	"errors"
 	"flag"
@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"time"
+	
+	"net/http"
 
 	golog "github.com/op/go-logging"
 
@@ -49,6 +51,10 @@ func assert(err error) {
 }
 
 func main() {
+	go func() {
+		http.ListenAndServe(":8080", http.DefaultServeMux)
+	}()
+
 	if len(os.Args) == 2 && os.Args[1] == "--version" {
 		versionChecker.PrintVersion()
 		os.Exit(0)
