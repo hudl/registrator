@@ -55,3 +55,8 @@ infrastructure:
     iam:
       role: $environmentprefix-$service-ecs
 
+build:
+    head_commit: $headcommit
+    docker_image: $dockerimage
+    branch: $branch
+    build_number: $buildnumber
