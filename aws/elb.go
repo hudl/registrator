@@ -650,10 +650,12 @@ func testStatus(containerID string, eurekaStatus fargo.StatusType, inputStatus f
 		result, found := generalCache.Get(containerID)
 		if !found {
 			log.Errorf("Unable to retrieve ELB data from cache.  Cannot check for healthy targets!")
+			return fargo.UNKNOWN, fargo.STARTING
 		}
 		elbMetadata, ok := result.(*LBInfo)
 		if !ok {
 			log.Errorf("Unable to convert LBInfo from cache.  Cannot check for healthy targets!")
+			return fargo.UNKNOWN, fargo.STARTING
 		}
 		log.Debugf("Looking up healthy targets for TG: %v", elbMetadata.TargetGroupArn)
 		thList, err2 := GetHealthyTargets(elbMetadata.TargetGroupArn)
