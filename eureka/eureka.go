@@ -198,6 +198,11 @@ func (r *EurekaAdapter) Refresh(service *bridge.Service) error {
 	} else {
 		err := r.client.HeartBeatInstance(registration)
 		if err != nil {
+			if strings.Contains(err.Error(), "heartbeat failed, rcode = 404") {
+				log.Info("Registration dropped out of eureka, reregistering:", GetUniqueID(*registration))
+				r.client.RegisterInstance(registration)
+				return nil
+			}
 			log.Error("Error occurred when heartbeating:", GetUniqueID(*registration))
 		} else {
 			log.Debug("Done heartbeating for:", GetUniqueID(*registration))
