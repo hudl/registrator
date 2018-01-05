@@ -1,7 +1,7 @@
 NAME=registrator
 VERSION=$(shell cat VERSION)
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
-DEV_RUN_OPTS ?=-ttl 30 -ttl-refresh 15 -require-label -ip 127.0.0.1 eureka://127.0.0.1:8090/eureka/v2
+DEV_RUN_OPTS ?=-ttl 30 -ttl-refresh 15 -ip 127.0.0.1 -require-label  eureka://127.0.0.1:8090/eureka/v2
 PROD_RELEASE_TAG=761584570493.dkr.ecr.us-east-1.amazonaws.com/registrator:latest
 TEST_TAG=761584570493.dkr.ecr.us-east-1.amazonaws.com/registrator:$(BRANCH)
 
