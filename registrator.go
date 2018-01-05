@@ -81,6 +81,7 @@ func main() {
 	}
 
 	if *hostIp != "" {
+		// below IP regex was obtained from http://blog.markhatton.co.uk/2011/03/15/regular-expressions-for-ip-addresses-cidr-ranges-and-hostnames/
 		ipRegEx, _ := regexp.Compile(`^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$`)
 		if !ipRegEx.MatchString(*hostIp) {
 			fmt.Fprintf(os.Stderr, "Invalid IP address '%s', please use a valid address.\n", *hostIp)
