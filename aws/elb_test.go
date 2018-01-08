@@ -622,6 +622,7 @@ func Test_testHealth(t *testing.T) {
 	}
 	tgArn := "arn:1234"
 	containerID := "123123412"
+	invalidContainerID := "111111"
 
 	setupCache("123123412", "instance-123", "correct-lb-dnsname", int64(1234), int64(9001), tgArn, unhealthyTHDs)
 
@@ -651,6 +652,23 @@ func Test_testHealth(t *testing.T) {
 		wantedNow := eureka.UP
 
 		now, reg := testStatus(containerID, eurekaStatus, previousStatus)
+		if reg != wanted {
+			t.Errorf("Should return %v status for reg status.  Returned %v", wanted, reg)
+		}
+		if now != wantedNow {
+			t.Errorf("Should return %v status for previous status.  Returned %v", wantedNow, now)
+		}
+	})
+
+	t.Run("Should fail gracefully", func(t *testing.T) {
+		flushCache(tgArn)
+		setupTHDCache(tgArn, healthyTHDs)
+		previousStatus := eureka.UNKNOWN
+		eurekaStatus := eureka.UNKNOWN
+		wanted := eureka.STARTING
+		wantedNow := eureka.UNKNOWN
+
+		now, reg := testStatus(invalidContainerID, eurekaStatus, previousStatus)
 		if reg != wanted {
 			t.Errorf("Should return %v status for reg status.  Returned %v", wanted, reg)
 		}
