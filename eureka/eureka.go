@@ -59,7 +59,7 @@ func checkBooleanFlag(service *bridge.Service, flag string) bool {
 			log.Errorf("eureka: %s must be valid boolean, was %v : %s", flag, v, err)
 			return false
 		}
-		return true
+		return v
 	}
 	return false
 }
