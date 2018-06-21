@@ -15,6 +15,7 @@ import (
 )
 
 var serviceIDPattern = regexp.MustCompile(`^(.+?):([a-zA-Z0-9][a-zA-Z0-9_.-]+):[0-9]+(?::udp)?$`)
+var LocalHostIp string
 
 type Bridge struct {
 	sync.Mutex

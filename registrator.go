@@ -88,6 +88,7 @@ func main() {
 			os.Exit(2)
 		}
 		log.Debug("Forcing host IP to", *hostIp)
+		bridge.LocalHostIp = *hostIp
 	}
 
 	if *requireLabel {
