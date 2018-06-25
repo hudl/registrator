@@ -71,7 +71,7 @@ func (b *Bridge) Refresh() {
 	// Set hostIp if needed
 	if b.config.HostIp == "" && b.config.IpServer != "" {
 		b.config.HostIp = b.getIpFromServer()
-		log.Debug("Refresh: setting HostIp to", b.config.HostIp)
+		log.Info("Refresh: setting HostIp to", b.config.HostIp)
 	}
 
 	for containerId, services := range b.getServicesCopy() {
@@ -119,7 +119,7 @@ func (b *Bridge) Sync(quiet bool) {
 	// Set hostIp if needed
 	if b.config.HostIp == "" && b.config.IpServer != "" {
 		b.config.HostIp = b.getIpFromServer()
-		log.Debug("Sync: setting HostIp to", b.config.HostIp)
+		log.Info("Sync: setting HostIp to", b.config.HostIp)
 	}
 
 	// Take this to avoid having to use a mutex
