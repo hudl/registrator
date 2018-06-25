@@ -29,6 +29,7 @@ type Config struct {
 	DeregisterCheck string
 	Cleanup         bool
 	RequireLabel    bool
+	IpServer        string
 }
 
 type Service struct {

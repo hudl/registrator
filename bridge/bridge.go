@@ -2,7 +2,10 @@ package bridge
 
 import (
 	"errors"
+	"fmt"
+	"io/ioutil"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -10,12 +13,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	dockerapi "github.com/fsouza/go-dockerclient"
 )
 
+const Timeout time.Duration = time.Duration(5 * time.Second)
+
 var serviceIDPattern = regexp.MustCompile(`^(.+?):([a-zA-Z0-9][a-zA-Z0-9_.-]+):[0-9]+(?::udp)?$`)
-var LocalHostIp string
 
 type Bridge struct {
 	sync.Mutex
@@ -63,6 +68,11 @@ func (b *Bridge) RemoveOnExit(containerId string) {
 }
 
 func (b *Bridge) Refresh() {
+	// Set hostIp if needed
+	if b.config.HostIp == "" && b.config.IpServer != "" {
+		b.config.HostIp = b.getIpFromServer()
+	}
+
 	for containerId, services := range b.getServicesCopy() {
 		for _, service := range services {
 			err := b.registry.Refresh(service)
@@ -105,6 +115,10 @@ func (b *Bridge) getServicesCopy() map[string][]*Service {
 }
 
 func (b *Bridge) Sync(quiet bool) {
+	// Set hostIp if needed
+	if b.config.HostIp == "" && b.config.IpServer != "" {
+		b.config.HostIp = b.getIpFromServer()
+	}
 
 	// Take this to avoid having to use a mutex
 	servicesSnapshot := b.getServicesCopy()
@@ -455,6 +469,26 @@ func (b *Bridge) shouldRemove(containerId string) bool {
 		return true
 	}
 	return false
+}
+
+func (b *Bridge) getIpFromServer() string {
+	client := http.Client{
+		Timeout: Timeout,
+	}
+	resp, err := client.Get(b.config.IpServer)
+	if err != nil {
+		fmt.Println(err)
+		return ""
+	}
+
+	defer resp.Body.Close()
+	responseData, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println(err)
+		return ""
+	}
+
+	return string(responseData)
 }
 
 var Hostname string

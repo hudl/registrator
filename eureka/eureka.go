@@ -1,13 +1,9 @@
 package eureka
 
 import (
-	"fmt"
-	"io/ioutil"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	aws "github.com/gliderlabs/registrator/aws"
 	"github.com/gliderlabs/registrator/bridge"
@@ -15,7 +11,6 @@ import (
 )
 
 const DefaultInterval = "10s"
-const Timeout time.Duration = time.Duration(5 * time.Second)
 
 func init() {
 	bridge.Register(new(Factory), "eureka")
@@ -116,11 +111,6 @@ func instanceInformation(service *bridge.Service) *fargo.Instance {
 		}
 	}
 
-	if !aws.CheckELBFlags(service) && bridge.LocalHostIp == "" {
-		//local dev
-		service.IP = getIPAddr()
-	}
-
 	// Metadata flag for a container
 	registration.SetMetadataString("is-container", string("true"))
 	registration.SetMetadataString("container-id", service.Origin.ContainerID)
@@ -174,26 +164,6 @@ func instanceInformation(service *bridge.Service) *fargo.Instance {
 	return registration
 }
 
-func getIPAddr() string {
-	client := http.Client{
-		Timeout: Timeout,
-	}
-	resp, err := client.Get("http://ipify.app.thorhudl.com")
-	if err != nil {
-		fmt.Println(err)
-		return ""
-	}
-
-	defer resp.Body.Close()
-	responseData, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println(err)
-		return ""
-	}
-
-	return string(responseData)
-}
-
 func (r *EurekaAdapter) Register(service *bridge.Service) error {
 	registration := instanceInformation(service)
 	var instance error
@@ -202,7 +172,6 @@ func (r *EurekaAdapter) Register(service *bridge.Service) error {
 		instance = aws.RegisterWithELBv2(service, registration, r.client)
 	} else {
 		log.Info("Registering instance", GetUniqueID(*registration))
-		log.Info("LocalHostIp: ", bridge.LocalHostIp)
 		instance = r.client.RegisterInstance(registration)
 	}
 	return instance

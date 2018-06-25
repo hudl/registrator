@@ -35,6 +35,7 @@ var retryAttempts = flag.Int("retry-attempts", 0, "Max retry attempts to establi
 var retryInterval = flag.Int("retry-interval", 2000, "Interval (in millisecond) between retry-attempts.")
 var cleanup = flag.Bool("cleanup", false, "Remove dangling services")
 var requireLabel = flag.Bool("require-label", false, "Only register containers which have the SERVICE_REGISTER label, and ignore all others.")
+var ipServer = flag.String("ip-server", "", "Get dynamic ip from the server for ports mapped to the host")
 
 func getopt(name, def string) string {
 	if env := os.Getenv(name); env != "" {
@@ -88,7 +89,6 @@ func main() {
 			os.Exit(2)
 		}
 		log.Debug("Forcing host IP to", *hostIp)
-		bridge.LocalHostIp = *hostIp
 	}
 
 	if *requireLabel {
@@ -127,6 +127,7 @@ func main() {
 		DeregisterCheck: *deregister,
 		Cleanup:         *cleanup,
 		RequireLabel:    *requireLabel,
+		IpServer:        *ipServer,
 	})
 
 	assert(err)
