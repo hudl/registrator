@@ -37,6 +37,7 @@ Option                           | Since | Description
 `-deregister <mode>`             | v6    | Deregister existed services "always" or "on-success". Default: always
 `-internal`                      |       | Use exposed ports instead of published ports
 `-ip <ip address>`               |       | Force IP address used for registering services
+`-ip-server <ip server>`         |       | Get IP address from the specified server for registering services
 `-resync <seconds>`              | v6    | Frequency all services are resynchronized. Default: 0, never
 `-retry-attempts <number>`       | v7    | Max retry attempts to establish a connection with the backend
 `-retry-interval <milliseconds>` | v7    | Interval (in millisecond) between retry-attempts
