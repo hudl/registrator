@@ -114,7 +114,7 @@ BUILD_RESULT=$?
 
 if [ $BUILD_RESULT -eq 0 ] && [ $PUBLISH -eq 1 ]; then
     echo "Publishing ${REPOSITORY_AND_TAG}"
-    $(aws ecr get-login --region=us-east-1) 2>&1
+    $(aws ecr get-login --region=us-east-1 --no-include-email) 2>&1
 
     # Log success message for build failure condition
     docker push $REPOSITORY_AND_TAG && echo "Publish succeeded."
