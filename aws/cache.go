@@ -32,6 +32,10 @@ func GetAndCache(key string, input Any, f Any, cacheTime time.Duration) (Any, er
 	return result, nil
 }
 
+func AddToCache(key string, value Any, cacheTime time.Duration) {
+	generalCache.Set(key, value, cacheTime)
+}
+
 // RemoveKeyFromCache : Delete any entry cache in the cache for this key
 func RemoveKeyFromCache(key string) {
 	generalCache.Delete(key)
