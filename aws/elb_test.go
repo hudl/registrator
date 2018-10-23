@@ -65,10 +65,10 @@ func TestCheckELBOnlyReg(t *testing.T) {
 }
 
 // Set up the cache
-func setupCache(containerID string, instanceID string, lbDNSName string, containerPort int64, lbPort int64, tgArn string, thds []*elbv2.TargetHealthDescription) {
+func setupCache(containerID string, instanceID string, lbDNSName string, containerPort int64, lbPort int, tgArn string, thds []*elbv2.TargetHealthDescription) {
 
-	fn := func(l lookupValues) (*LBInfo, error) {
-		return &LBInfo{DNSName: lbDNSName, Port: lbPort, TargetGroupArn: tgArn}, nil
+	fn := func(l lookupValues) (*LoadBalancerRegistrationInfo, error) {
+		return &LoadBalancerRegistrationInfo{DNSName: lbDNSName, Port: lbPort, TargetGroupArn: tgArn}, nil
 	}
 	i := lookupValues{InstanceID: instanceID, Port: containerPort}
 
@@ -77,38 +77,24 @@ func setupCache(containerID string, instanceID string, lbDNSName string, contain
 	}
 	GetAndCache(containerID, i, fn, gocache.NoExpiration)
 	GetAndCache(tgArn, thds, fn2, gocache.NoExpiration)
-	r, _ := generalCache.Get("123123412")
-	fmt.Printf("Cache value now looks like this: %+v\n", r.(*LBInfo))
+	r, _ := generalCache.Get(containerID)
+	fmt.Printf("Cache value now looks like this: %+v\n", r.(*LoadBalancerRegistrationInfo))
 }
 
-// Setup the target health descriptions cache specifically
-func setupTHDCache(tgArn string, thds []*elbv2.TargetHealthDescription) {
-	fn2 := func(thds []*elbv2.TargetHealthDescription) ([]*elbv2.TargetHealthDescription, error) {
-		return thds, nil
-	}
-	GetAndCache(tgArn, thds, fn2, gocache.NoExpiration)
-	r, _ := generalCache.Get(tgArn)
-	fmt.Printf("THD Cache value now looks like this: %+v\n", r.([]*elbv2.TargetHealthDescription))
-}
-
-// Flush from cache
-func flushCache(key string) {
-	generalCache.Delete(key)
-}
 
 // Test_GetELBV2ForContainer - Test expected values are returned
 func Test_GetELBV2ForContainer(t *testing.T) {
 
 	// Setup cache
-	lbWant := LBInfo{
+	lbWant := LoadBalancerRegistrationInfo{
 		DNSName:        "my-lb",
-		Port:           int64(12345),
+		Port:           12345,
 		TargetGroupArn: "arn:1234",
 	}
 
 	thds := []*elbv2.TargetHealthDescription{}
 	tgArn := "arn:1234"
-	setupCache("123123412", "instance-123", "my-lb", int64(1234), int64(12345), tgArn, thds)
+	setupCache("123123412", "instance-123", "my-lb", 1234, 12345, tgArn, thds)
 
 	type args struct {
 		containerID string
@@ -121,7 +107,7 @@ func Test_GetELBV2ForContainer(t *testing.T) {
 	tests := []struct {
 		name       string
 		args       args
-		wantLbinfo *LBInfo
+		wantLbinfo *LoadBalancerRegistrationInfo
 		wantErr    bool
 	}{
 		{
@@ -272,8 +258,8 @@ func TestCheckELBFlags(t *testing.T) {
 	}
 }
 
-// Test_setRegInfo - Test that registration struct is returned as expected
-func Test_setRegInfo(t *testing.T) {
+// Test_mutateRegistrationInfo - Test that registration struct is returned as expected
+func Test_mutateRegistrationInfo(t *testing.T) {
 	initMetadata() // Used from metadata_test.go
 
 	svc := bridge.Service{
@@ -311,10 +297,10 @@ func Test_setRegInfo(t *testing.T) {
 	thds := []*elbv2.TargetHealthDescription{}
 	tgArn := "arn:1234"
 	// Init LB info cache
-	setupCache("123123412", "instance-123", "correct-lb-dnsname", int64(1234), int64(9001), tgArn, thds)
+	setupCache("123123412", "instance-123", "correct-lb-dnsname", 1234, 9001, tgArn, thds)
 
 	r, _ := generalCache.Get("123123412")
-	lb := r.(*LBInfo)
+	lb := r.(*LoadBalancerRegistrationInfo)
 	wantedAwsInfo := eureka.AmazonMetadataType{
 		PublicHostname: lb.DNSName,
 		HostName:       lb.DNSName,
@@ -375,9 +361,9 @@ func Test_setRegInfo(t *testing.T) {
 	}
 }
 
-// Test_setRegInfoExplicitEndpoint - Test that registration struct is returned as expected when you set the host and port
+// Test_mutateRegistrationInfoExplicitEndpoint - Test that registration struct is returned as expected when you set the host and port
 // and that they are used rather than the load balancer lookup
-func Test_setRegInfoExplicitEndpoint(t *testing.T) {
+func Test_mutateRegistrationInfoExplicitEndpoint(t *testing.T) {
 	initMetadata() // Used from metadata_test.go
 
 	svc := bridge.Service{
@@ -422,7 +408,7 @@ func Test_setRegInfoExplicitEndpoint(t *testing.T) {
 	// if things are working correctly, this data won't be used for this test
 	thds := []*elbv2.TargetHealthDescription{}
 	tgArn := "arn:1234"
-	setupCache("123123412", "instance-123", "i-should-not-be-used", int64(1234), int64(666), tgArn, thds)
+	setupCache("123123412", "instance-123", "i-should-not-be-used", 1234, 666, tgArn, thds)
 
 	wantedAwsInfo := eureka.AmazonMetadataType{
 		PublicHostname: svc.Attrs["eureka_elbv2_hostname"],
@@ -483,8 +469,126 @@ func Test_setRegInfoExplicitEndpoint(t *testing.T) {
 
 }
 
-// Test_setRegInfoELBv2Only - Test that certain metadata is stripped out when using an ELBv2 only registration setting
-func Test_setRegInfoELBv2Only(t *testing.T) {
+// Test_mutateRegistrationInfoExplicitEndpointCachesData - Test that the elb metadata is cached correctly for use in healthchecks when set explicitly
+// and that they are used rather than the load balancer lookup
+func Test_mutateRegistrationInfoExplicitEndpointCachesData(t *testing.T) {
+	initMetadata() // Used from metadata_test.go
+
+	svc := bridge.Service{
+		Attrs: map[string]string{
+			"eureka_lookup_elbv2_endpoint": "false",
+			"eureka_elbv2_hostname":        "hostname-i-set",
+			"eureka_elbv2_port":            "65535",
+			"eureka_elbv2_targetgroup":     "arn:1234",
+			"eureka_datacenterinfo_name":   "AMAZON",
+		},
+		Name: "app",
+		Origin: bridge.ServicePort{
+			ContainerID: "123123412",
+		},
+	}
+
+	awsInfo := eureka.AmazonMetadataType{
+		PublicHostname: "i-should-be-changed",
+		HostName:       "i-should-be-changed",
+		InstanceID:     "i-should-be-changed",
+	}
+
+	dcInfo := eureka.DataCenterInfo{
+		Name:     eureka.Amazon,
+		Metadata: awsInfo,
+	}
+	wantedLeaseInfo := eureka.LeaseInfo{
+		DurationInSecs: 35,
+	}
+
+	reg := eureka.Instance{
+		DataCenterInfo: dcInfo,
+		Port:           5001,
+		IPAddr:         "4.3.2.1",
+		App:            "app",
+		VipAddress:     "4.3.2.1",
+		HostName:       "hostname_identifier",
+		Status:         eureka.UP,
+	}
+
+	// Init LB info cache
+	//port := "80"
+	//healthyTHDs := []*elbv2.TargetHealthDescription{
+	//	{
+	//		HealthCheckPort: &port,
+	//	},
+	//}
+	tgArn := "arn:1234"
+	unhealthyTHDs := []*elbv2.TargetHealthDescription{}
+	setupTHDCache(tgArn, unhealthyTHDs)
+
+	wantedAwsInfo := eureka.AmazonMetadataType{
+		PublicHostname: svc.Attrs["eureka_elbv2_hostname"],
+		HostName:       svc.Attrs["eureka_elbv2_hostname"],
+		InstanceID:     svc.Attrs["eureka_elbv2_hostname"] + "_" + svc.Attrs["eureka_elbv2_port"],
+	}
+	wantedDCInfo := eureka.DataCenterInfo{
+		Name:     eureka.Amazon,
+		Metadata: wantedAwsInfo,
+	}
+
+	expectedPort, _ := strconv.Atoi(svc.Attrs["eureka_elbv2_port"])
+	wanted := eureka.Instance{
+		DataCenterInfo: wantedDCInfo,
+		LeaseInfo:      wantedLeaseInfo,
+		Port:           expectedPort,
+		App:            svc.Name,
+		IPAddr:         "",
+		VipAddress:     "",
+		HostName:       svc.Attrs["eureka_elbv2_hostname"],
+		Status:         eureka.UP,
+	}
+
+	type args struct {
+		service      *bridge.Service
+		registration *eureka.Instance
+	}
+	tests := []struct {
+		name string
+		args args
+		want *eureka.Instance
+	}{
+		{
+			name: "Should match data",
+			args: args{service: &svc, registration: &reg},
+			want: &wanted,
+		},
+	}
+	for _, tt := range tests {
+		t.Run("Should return UP and find LB value in cache", func(t *testing.T) {
+
+			previousStatus := eureka.UNKNOWN
+			eurekaStatus := eureka.UP
+			wantedReg := eureka.UP
+			wantedNow := eureka.UP
+
+			_ = mutateRegistrationInfo(tt.args.service, tt.args.registration)
+
+			change := determineNewEurekaStatus("123123412", eurekaStatus, previousStatus)
+			if change.registrationStatus != wantedReg {
+				t.Errorf("Should return %v status for reg status.  Returned %v", wantedReg, change.registrationStatus)
+			}
+			if change.newStatus != wantedNow {
+				t.Errorf("Should return %v status for previous status.  Returned %v", wantedNow, change.newStatus)
+			}
+		})
+	}
+
+}
+
+
+
+
+
+
+// Test_mutateRegistrationInfoELBv2Only - Test that certain metadata is stripped out when using an ELBv2 only registration setting
+func Test_mutateRegistrationInfoELBv2Only(t *testing.T) {
 	initMetadata() // Used from metadata_test.go
 
 	svc := bridge.Service{
@@ -543,10 +647,10 @@ func Test_setRegInfoELBv2Only(t *testing.T) {
 	// Init LB info cache
 	thds := []*elbv2.TargetHealthDescription{}
 	tgArn := "arn:1234"
-	setupCache("123123412", "instance-123", "correct-hostname", int64(1234), int64(12345), tgArn, thds)
+	setupCache("123123412", "instance-123", "correct-hostname", 1234, 12345, tgArn, thds)
 
 	r, _ := generalCache.Get("123123412")
-	lb := r.(*LBInfo)
+	lb := r.(*LoadBalancerRegistrationInfo)
 	wantedAwsInfo := eureka.AmazonMetadataType{
 		PublicHostname: lb.DNSName,
 		HostName:       lb.DNSName,

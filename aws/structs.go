@@ -8,11 +8,14 @@ type lookupValues struct {
 	TaskArn     string
 }
 
-// LBInfo represents a ELBv2 endpoint
-type LBInfo struct {
+// LoadBalancerRegistrationInfo represents registration details for a ELBv2 endpoint
+type LoadBalancerRegistrationInfo struct {
 	DNSName        string
-	Port           int64
+	Port           int
+	ELBEndpoint    string
 	TargetGroupArn string
+	IpAddress      string
+	VipAddress     string
 }
 
 // HasNoLoadBalancer - Special error type for when container has no load balancer

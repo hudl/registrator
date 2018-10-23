@@ -50,6 +50,63 @@ func getECSSession() (*ecs.ECS, error) {
 	return ecs.New(sess, awssdk.NewConfig().WithRegion(awsMetadata.Region)), nil
 }
 
+
+// CheckELBFlags - Helper function to check if the correct config flags are set to use ELBs
+// We accept two possible configurations here - either eureka_lookup_elbv2_endpoint can be set,
+// for automatic lookup, or eureka_elbv2_hostname, eureka_elbv2_port and eureka_elbv2_targetgroup can be set manually
+// to avoid the 10-20s wait for lookups
+func CheckELBFlags(service *bridge.Service) bool {
+
+	isAws := service.Attrs["eureka_datacenterinfo_name"] != fargo.MyOwn
+	var hasExplicit bool
+	var useLookup bool
+
+	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" && service.Attrs["eureka_elbv2_targetgroup"] != "" {
+		v, err := strconv.ParseUint(service.Attrs["eureka_elbv2_port"], 10, 16)
+		if err != nil {
+			log.Errorf("eureka_elbv2_port must be valid 16-bit unsigned int, was %v : %s", v, err)
+			hasExplicit = false
+		}
+		hasExplicit = true
+		useLookup = true
+	}
+
+	if service.Attrs["eureka_lookup_elbv2_endpoint"] != "" {
+		v, err := strconv.ParseBool(service.Attrs["eureka_lookup_elbv2_endpoint"])
+		if err != nil {
+			log.Errorf("eureka_lookup_elbv2_endpoint must be valid boolean, was %v : %s", v, err)
+			useLookup = false
+		}
+		useLookup = v
+	}
+
+	if (hasExplicit || useLookup) && isAws {
+		return true
+	}
+	return false
+}
+
+// CheckELBOnlyReg - Helper function to check if only the ELB should be registered (no containers)
+func CheckELBOnlyReg(service *bridge.Service) bool {
+
+	if service.Attrs["eureka_elbv2_only_registration"] != "" {
+		v, err := strconv.ParseBool(service.Attrs["eureka_elbv2_only_registration"])
+		if err != nil {
+			log.Errorf("eureka_elbv2_only_registration must be valid boolean, was %v : %s", v, err)
+			return true
+		}
+		return v
+	}
+	return true
+}
+
+// GetUniqueID Note: Helper function reimplemented here to avoid segfault calling it on fargo.Instance struct
+func GetUniqueID(instance fargo.Instance) string {
+	return instance.HostName + "_" + strconv.Itoa(instance.Port)
+}
+
+
+
 // Get Load balancer and target group using a service and cluster name (more efficient)
 func getLoadBalancerFromService(serviceName string, clusterName string) (*elbv2.LoadBalancer, *elbv2.TargetGroup, error) {
 
@@ -144,17 +201,17 @@ func getTargetGroupsPage(svc *elbv2.ELBV2, marker *string) (*elbv2.DescribeTarge
 	return tg, nil
 }
 
-// GetELBV2ForContainer returns an LBInfo struct with the load balancer DNS name and listener port for a given instanceId and port
-// if an error occurs, or the target is not found, an empty LBInfo is returned.
+// GetELBV2ForContainer returns an LoadBalancerRegistrationInfo struct with the load balancer DNS name and listener port for a given instanceId and port
+// if an error occurs, or the target is not found, an empty LoadBalancerRegistrationInfo is returned.
 // Pass it the instanceID for the docker host, and the the host port to lookup the associated ELB.
 //
-func GetELBV2ForContainer(containerID string, instanceID string, port int64, clusterName string, taskArn string, serviceName string) (lbinfo *LBInfo, err error) {
+func GetELBV2ForContainer(containerID string, instanceID string, port int64, clusterName string, taskArn string, serviceName string) (lbinfo *LoadBalancerRegistrationInfo, err error) {
 	i := lookupValues{InstanceID: instanceID, Port: port, ClusterName: clusterName, TaskArn: taskArn, ServiceName: serviceName}
 	out, err := GetAndCache(containerID, i, getELBAndCacheDetails, gocache.NoExpiration)
 	if out == nil || err != nil {
 		return nil, err
 	}
-	ret, _ := out.(*LBInfo)
+	ret, _ := out.(*LoadBalancerRegistrationInfo)
 	return ret, err
 }
 
@@ -240,14 +297,14 @@ func lookupServiceName(clusterName string, taskArn string) string {
 // Does the real work of retrieving the load balancer details, given a lookupValues struct.
 // Note: This function uses caching extensively to reduce the burden on the AWS API when called from multiple goroutines
 //
-func getELBAndCacheDetails(l lookupValues) (lbinfo *LBInfo, err error) {
+func getELBAndCacheDetails(l lookupValues) (lbinfo *LoadBalancerRegistrationInfo, err error) {
 	instanceID := l.InstanceID
 	port := l.Port
 
 	var lbArns []*string
 	var lbPort *int64
 	var tgArn string
-	info := &LBInfo{}
+	info := &LoadBalancerRegistrationInfo{}
 	var clusterName string
 	var serviceName string
 
@@ -372,87 +429,64 @@ func getELBAndCacheDetails(l lookupValues) (lbinfo *LBInfo, err error) {
 	log.Debugf("LB Endpoint for Instance:%v Port:%v, Target Group:%v, is: %s:%s\n", instanceID, port, tgArn, *lbData.LoadBalancers[0].DNSName, strconv.FormatInt(*lbPort, 10))
 
 	info.DNSName = *lbData.LoadBalancers[0].DNSName
-	info.Port = *lbPort
+	info.Port = int(*lbPort)
 	info.TargetGroupArn = tgArn
 	return info, nil
 }
 
-// CheckELBFlags - Helper function to check if the correct config flags are set to use ELBs
-// We accept two possible configurations here - either eureka_lookup_elbv2_endpoint can be set,
-// for automatic lookup, or eureka_elbv2_hostname, eureka_elbv2_port and eureka_elbv2_targetgroup can be set manually
-// to avoid the 10-20s wait for lookups
-func CheckELBFlags(service *bridge.Service) bool {
-
-	isAws := service.Attrs["eureka_datacenterinfo_name"] != fargo.MyOwn
-	var hasExplicit bool
-	var useLookup bool
-
-	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" && service.Attrs["eureka_elbv2_targetgroup"] != "" {
-		v, err := strconv.ParseUint(service.Attrs["eureka_elbv2_port"], 10, 16)
-		if err != nil {
-			log.Errorf("eureka_elbv2_port must be valid 16-bit unsigned int, was %v : %s", v, err)
-			hasExplicit = false
-		}
-		hasExplicit = true
-		useLookup = true
-	}
-
-	if service.Attrs["eureka_lookup_elbv2_endpoint"] != "" {
-		v, err := strconv.ParseBool(service.Attrs["eureka_lookup_elbv2_endpoint"])
-		if err != nil {
-			log.Errorf("eureka_lookup_elbv2_endpoint must be valid boolean, was %v : %s", v, err)
-			useLookup = false
-		}
-		useLookup = v
-	}
-
-	if (hasExplicit || useLookup) && isAws {
-		return true
-	}
-	return false
-}
-
-// CheckELBOnlyReg - Helper function to check if only the ELB should be registered (no containers)
-func CheckELBOnlyReg(service *bridge.Service) bool {
-
-	if service.Attrs["eureka_elbv2_only_registration"] != "" {
-		v, err := strconv.ParseBool(service.Attrs["eureka_elbv2_only_registration"])
-		if err != nil {
-			log.Errorf("eureka_elbv2_only_registration must be valid boolean, was %v : %s", v, err)
-			return true
-		}
-		return v
-	}
-	return true
-}
-
-// GetUniqueID Note: Helper function reimplemented here to avoid segfault calling it on fargo.Instance struct
-func GetUniqueID(instance fargo.Instance) string {
-	return instance.HostName + "_" + strconv.Itoa(instance.Port)
-}
 
 // Helper function to alter registration info and add the ELBv2 endpoint
 // useCache parameter is passed to getELBV2ForContainer
 func mutateRegistrationInfo(service *bridge.Service, registration *fargo.Instance) *fargo.Instance {
 
+	elbMetadata, err := getELBMetadata(service, registration.HostName, registration.Port)
+	if err != nil {
+		return nil
+	}
+
+	registration.IPAddr = elbMetadata.IpAddress
+	registration.VipAddress = elbMetadata.VipAddress
+	registration.Port = elbMetadata.Port
+	registration.HostName = elbMetadata.DNSName
+
+	registration.SetMetadataString("has-elbv2", "true")
+	registration.SetMetadataString("elbv2-endpoint", elbMetadata.ELBEndpoint)
+	registration.VipAddress = registration.IPAddr
+
+	if CheckELBOnlyReg(service) {
+		// Remove irrelevant metadata from an ELB only registration
+		registration.DataCenterInfo.Metadata = fargo.AmazonMetadataType{
+			InstanceID:     GetUniqueID(*registration), // This is deliberate - due to limitations in uniqueIDs
+			PublicHostname: registration.HostName,
+			HostName:       registration.HostName,
+		}
+		registration.SetMetadataString("container-id", "")
+		registration.SetMetadataString("container-name", "")
+		registration.SetMetadataString("aws-instance-id", "")
+	}
+
+	// Reduce lease time for ALBs to have them drop out of eureka quicker
+	registration.LeaseInfo = fargo.LeaseInfo{
+		DurationInSecs: 35,
+	}
+
+	return registration
+}
+
+
+func getELBMetadata(service *bridge.Service, hostName string, port int) (LoadBalancerRegistrationInfo, error) {
+	var elbMetadata LoadBalancerRegistrationInfo
 	awsMetadata := GetMetadata()
-	var elbEndpoint string
-	var elbMetadata LBInfo
 
 	// We've been given the ELB endpoint, so use this
 	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" && service.Attrs["eureka_elbv2_targetgroup"] != "" {
 		log.Debugf("found ELBv2 hostname=%v, port=%v and TG=%v options, using these.", service.Attrs["eureka_elbv2_hostname"], service.Attrs["eureka_elbv2_port"], service.Attrs["eureka_elbv2_targetgroup"])
-		registration.Port, _ = strconv.Atoi(service.Attrs["eureka_elbv2_port"])
-		registration.HostName = service.Attrs["eureka_elbv2_hostname"]
-		registration.IPAddr = ""
-		registration.VipAddress = ""
-		elbEndpoint = service.Attrs["eureka_elbv2_hostname"] + "_" + service.Attrs["eureka_elbv2_port"]
-		elbMetadata = LBInfo{
-			Port:           int64(registration.Port),
-			DNSName:        registration.HostName,
-			TargetGroupArn: service.Attrs["eureka_elbv2_targetgroup"],
-		}
-
+		elbMetadata.Port, _ = strconv.Atoi(service.Attrs["eureka_elbv2_port"])
+		elbMetadata.DNSName = service.Attrs["eureka_elbv2_hostname"]
+		elbMetadata.TargetGroupArn = service.Attrs["eureka_elbv2_targetgroup"]
+		elbMetadata.ELBEndpoint = service.Attrs["eureka_elbv2_hostname"] + "_" + service.Attrs["eureka_elbv2_port"]
+		elbMetadata.IpAddress = ""
+		AddToCache(service.Origin.ContainerID, &elbMetadata, gocache.NoExpiration)
 	} else {
 		// We don't have the ELB endpoint, so look it up.
 		// Check for some ECS labels first, these will allow more efficient lookups
@@ -471,40 +505,17 @@ func mutateRegistrationInfo(service *bridge.Service, registration *fargo.Instanc
 			serviceName = service.Attrs["ecs_service"]
 		}
 
-		elbMetadata1, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port), clusterName, taskArn, serviceName)
+		elbMetadata1, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(port), clusterName, taskArn, serviceName)
 		if err != nil || elbMetadata1 == nil {
-			log.Errorf("Unable to find associated ELBv2 for service: %s, instance: %s hostname: %s port: %v, Error: %s\n", service.Name, awsMetadata.InstanceID, registration.HostName, registration.Port, err)
-			return nil
+			log.Errorf("Unable to find associated ELBv2 for service: %s, instance: %s hostname: %s port: %v, Error: %s\n", service.Name, awsMetadata.InstanceID, hostName, port, err)
+			return elbMetadata, fmt.Errorf("No ELB data available")
 		}
 		elbMetadata = *elbMetadata1
 
-		elbStrPort := strconv.FormatInt(elbMetadata.Port, 10)
-		elbEndpoint = elbMetadata.DNSName + "_" + elbStrPort
-		registration.Port = int(elbMetadata.Port)
-		registration.IPAddr = ""
-		registration.HostName = elbMetadata.DNSName
+		elbMetadata.ELBEndpoint = elbMetadata.DNSName + "_" + strconv.Itoa(elbMetadata.Port)
+		elbMetadata.IpAddress = ""
 	}
-
-	if CheckELBOnlyReg(service) {
-		// Remove irrelevant metadata from an ELB only registration
-		registration.DataCenterInfo.Metadata = fargo.AmazonMetadataType{
-			InstanceID:     GetUniqueID(*registration), // This is deliberate - due to limitations in uniqueIDs
-			PublicHostname: registration.HostName,
-			HostName:       registration.HostName,
-		}
-		registration.SetMetadataString("container-id", "")
-		registration.SetMetadataString("container-name", "")
-		registration.SetMetadataString("aws-instance-id", "")
-	}
-
-	// Reduce lease time for ALBs to have them drop out of eureka quicker
-	registration.LeaseInfo = fargo.LeaseInfo{
-		DurationInSecs: 35,
-	}
-	registration.SetMetadataString("has-elbv2", "true")
-	registration.SetMetadataString("elbv2-endpoint", elbEndpoint)
-	registration.VipAddress = registration.IPAddr
-	return registration
+	return elbMetadata, nil
 }
 
 // Check an ELB's initial status in eureka

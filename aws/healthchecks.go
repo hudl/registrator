@@ -109,9 +109,9 @@ func determineNewEurekaStatus(containerID string, eurekaStatus fargo.StatusType,
 			log.Errorf("Unable to retrieve ELB data from cache.  Cannot check for healthy targets!")
 			return statusChange{newStatus: fargo.UNKNOWN, registrationStatus: fargo.STARTING}
 		}
-		elbMetadata, ok := result.(*LBInfo)
+		elbMetadata, ok := result.(*LoadBalancerRegistrationInfo)
 		if !ok {
-			log.Errorf("Unable to convert LBInfo from cache.  Cannot check for healthy targets!")
+			log.Errorf("Unable to convert LoadBalancerRegistrationInfo from cache.  Cannot check for healthy targets!")
 			return statusChange{newStatus: fargo.UNKNOWN, registrationStatus: fargo.STARTING}
 		}
 		log.Debugf("Looking up healthy targets for TG: %v", elbMetadata.TargetGroupArn)
