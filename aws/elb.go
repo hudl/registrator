@@ -17,8 +17,6 @@ import (
 	gocache "github.com/patrickmn/go-cache"
 )
 
-const DEFAULT_EXP_TIME = 10 * time.Second
-
 var refreshInterval int
 
 func (e HasNoLoadBalancer) Error() string {

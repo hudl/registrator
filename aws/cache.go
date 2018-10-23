@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+const DEFAULT_EXP_TIME = 10 * time.Second
 var generalCache = cache.New(DEFAULT_EXP_TIME, DEFAULT_EXP_TIME)
 
 type Any interface{}
