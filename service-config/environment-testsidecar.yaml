@@ -2,6 +2,8 @@ environment: testsidecar
 infrastructure:
   web:
     requirements:
-      docker_command: ["-ttl","30","-ttl-refresh","15","-resync","300","-cleanup","-require-label","eureka://registrator-testing.thorhudl.com:8080/eureka/v2"]
+      environment_variables:
+      - REGISTRATOR_LOG_LEVEL: "DEBUG"
+      docker_command: ["-ttl","30","-ttl-refresh","15","-resync","300","-cleanup","-require-label","eureka://registrator-testing.thorhudl.com:5050/eureka/v2"]
     preferences:
-      ecsCluster: t-marvel-perftest-orch
+      ecsCluster: t-marvel-ecs-vpc2
