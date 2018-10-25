@@ -488,6 +488,14 @@ func Test_mutateRegistrationInfoExplicitEndpointCachesData(t *testing.T) {
 		},
 	}
 
+	wantedLBDetails := &LoadBalancerRegistrationInfo{
+		DNSName: "hostname-i-set",
+		IpAddress: "",
+		Port: 65535,
+		TargetGroupArn: "arn:1234",
+		ELBEndpoint: "hostname-i-set_65535",
+	}
+
 	awsInfo := eureka.AmazonMetadataType{
 		PublicHostname: "i-should-be-changed",
 		HostName:       "i-should-be-changed",
@@ -497,9 +505,6 @@ func Test_mutateRegistrationInfoExplicitEndpointCachesData(t *testing.T) {
 	dcInfo := eureka.DataCenterInfo{
 		Name:     eureka.Amazon,
 		Metadata: awsInfo,
-	}
-	wantedLeaseInfo := eureka.LeaseInfo{
-		DurationInSecs: 35,
 	}
 
 	reg := eureka.Instance{
@@ -513,77 +518,30 @@ func Test_mutateRegistrationInfoExplicitEndpointCachesData(t *testing.T) {
 	}
 
 	// Init LB info cache
-	//port := "80"
-	//healthyTHDs := []*elbv2.TargetHealthDescription{
-	//	{
-	//		HealthCheckPort: &port,
-	//	},
-	//}
-	tgArn := "arn:1234"
-	unhealthyTHDs := []*elbv2.TargetHealthDescription{}
-	setupTHDCache(tgArn, unhealthyTHDs)
-
-	wantedAwsInfo := eureka.AmazonMetadataType{
-		PublicHostname: svc.Attrs["eureka_elbv2_hostname"],
-		HostName:       svc.Attrs["eureka_elbv2_hostname"],
-		InstanceID:     svc.Attrs["eureka_elbv2_hostname"] + "_" + svc.Attrs["eureka_elbv2_port"],
-	}
-	wantedDCInfo := eureka.DataCenterInfo{
-		Name:     eureka.Amazon,
-		Metadata: wantedAwsInfo,
-	}
-
-	expectedPort, _ := strconv.Atoi(svc.Attrs["eureka_elbv2_port"])
-	wanted := eureka.Instance{
-		DataCenterInfo: wantedDCInfo,
-		LeaseInfo:      wantedLeaseInfo,
-		Port:           expectedPort,
-		App:            svc.Name,
-		IPAddr:         "",
-		VipAddress:     "",
-		HostName:       svc.Attrs["eureka_elbv2_hostname"],
-		Status:         eureka.UP,
-	}
-
-	type args struct {
-		service      *bridge.Service
-		registration *eureka.Instance
-	}
-	tests := []struct {
-		name string
-		args args
-		want *eureka.Instance
-	}{
+	port := "80"
+	healthyTHDs := []*elbv2.TargetHealthDescription{
 		{
-			name: "Should match data",
-			args: args{service: &svc, registration: &reg},
-			want: &wanted,
+			HealthCheckPort: &port,
 		},
 	}
-	for _, tt := range tests {
-		t.Run("Should return UP and find LB value in cache", func(t *testing.T) {
+	tgArn := "arn:1234"
+	setupTHDCache(tgArn, healthyTHDs)
 
-			previousStatus := eureka.UNKNOWN
-			eurekaStatus := eureka.UP
-			wantedReg := eureka.UP
-			wantedNow := eureka.UP
 
-			_ = mutateRegistrationInfo(tt.args.service, tt.args.registration)
+	t.Run("Should return UP and find LB value in cache", func(t *testing.T) {
 
-			change := determineNewEurekaStatus("123123412", eurekaStatus, previousStatus)
-			if change.registrationStatus != wantedReg {
-				t.Errorf("Should return %v status for reg status.  Returned %v", wantedReg, change.registrationStatus)
-			}
-			if change.newStatus != wantedNow {
-				t.Errorf("Should return %v status for previous status.  Returned %v", wantedNow, change.newStatus)
-			}
-		})
-	}
+		_ = mutateRegistrationInfo(&svc, &reg)
+		entry, present := generalCache.Get("123123412")
+		if !present {
+			t.Errorf("Value not in cache")
+		}
+		if !reflect.DeepEqual(entry, wantedLBDetails) {
+			t.Errorf("Should return %v status from cache.  Returned %v", wantedLBDetails, entry)
+		}
+
+	})
 
 }
-
-
-
 
 
 
