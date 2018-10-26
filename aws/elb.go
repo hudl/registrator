@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"reflect"
 	"strconv"
 	"time"
 
@@ -13,91 +12,15 @@ import (
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/aws/aws-sdk-go/service/elbv2"
 
-	"sync"
-
 	"github.com/gliderlabs/registrator/bridge"
-	fargo "github.com/hudl/fargo"
+	"github.com/hudl/fargo"
 	gocache "github.com/patrickmn/go-cache"
 )
 
-// LBInfo represents a ELBv2 endpoint
-type LBInfo struct {
-	DNSName        string
-	Port           int64
-	TargetGroupArn string
-}
-
-type lookupValues struct {
-	InstanceID  string
-	Port        int64
-	ClusterName string
-	ServiceName string
-	TaskArn     string
-}
-
-const DEFAULT_EXP_TIME = 10 * time.Second
-
-var generalCache = gocache.New(DEFAULT_EXP_TIME, DEFAULT_EXP_TIME)
 var refreshInterval int
-
-type any interface{}
-
-// HasNoLoadBalancer - Special error type for when container has no load balancer
-type HasNoLoadBalancer struct {
-	message string
-}
 
 func (e HasNoLoadBalancer) Error() string {
 	return e.message
-}
-
-//
-// Make eureka status thread-safe
-//
-type eurekaStatus struct {
-	sync.RWMutex
-	Mapper map[string]fargo.StatusType
-}
-
-var previousStatus = eurekaStatus{Mapper: make(map[string]fargo.StatusType)}
-
-func getPreviousStatus(containerID string) fargo.StatusType {
-	previousStatus.RLock()
-	defer previousStatus.RUnlock()
-	return previousStatus.Mapper[containerID]
-}
-
-func setPreviousStatus(containerID string, status fargo.StatusType) {
-	previousStatus.Lock()
-	defer previousStatus.Unlock()
-	previousStatus.Mapper[containerID] = status
-}
-
-//
-// Provide a general caching mechanism for any function that lasts a few seconds.
-//
-func getAndCache(key string, input any, f any, cacheTime time.Duration) (any, error) {
-
-	vf := reflect.ValueOf(f)
-	vinput := reflect.ValueOf(input)
-
-	result, found := generalCache.Get(key)
-	if !found {
-		caller := vf.Call([]reflect.Value{vinput})
-		output := caller[0].Interface()
-		err, _ := caller[1].Interface().(error)
-		if err == nil {
-			generalCache.Set(key, output, cacheTime)
-			return output, nil
-		}
-		return nil, err
-	}
-	return result, nil
-}
-
-// RemoveLBCache : Delete any cache of load balancer for this containerID
-func RemoveLBCache(key string) {
-	generalCache.Delete(key)
 }
 
 // Get a session to AWS API
@@ -124,6 +47,63 @@ func getECSSession() (*ecs.ECS, error) {
 	awsMetadata := GetMetadata()
 	return ecs.New(sess, awssdk.NewConfig().WithRegion(awsMetadata.Region)), nil
 }
+
+
+// CheckELBFlags - Helper function to check if the correct config flags are set to use ELBs
+// We accept two possible configurations here - either eureka_lookup_elbv2_endpoint can be set,
+// for automatic lookup, or eureka_elbv2_hostname, eureka_elbv2_port and eureka_elbv2_targetgroup can be set manually
+// to avoid the 10-20s wait for lookups
+func CheckELBFlags(service *bridge.Service) bool {
+
+	isAws := service.Attrs["eureka_datacenterinfo_name"] != fargo.MyOwn
+	var hasExplicit bool
+	var useLookup bool
+
+	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" && service.Attrs["eureka_elbv2_targetgroup"] != "" {
+		v, err := strconv.ParseUint(service.Attrs["eureka_elbv2_port"], 10, 16)
+		if err != nil {
+			log.Errorf("eureka_elbv2_port must be valid 16-bit unsigned int, was %v : %s", v, err)
+			hasExplicit = false
+		}
+		hasExplicit = true
+		useLookup = true
+	}
+
+	if service.Attrs["eureka_lookup_elbv2_endpoint"] != "" {
+		v, err := strconv.ParseBool(service.Attrs["eureka_lookup_elbv2_endpoint"])
+		if err != nil {
+			log.Errorf("eureka_lookup_elbv2_endpoint must be valid boolean, was %v : %s", v, err)
+			useLookup = false
+		}
+		useLookup = v
+	}
+
+	if (hasExplicit || useLookup) && isAws {
+		return true
+	}
+	return false
+}
+
+// CheckELBOnlyReg - Helper function to check if only the ELB should be registered (no containers)
+func CheckELBOnlyReg(service *bridge.Service) bool {
+
+	if service.Attrs["eureka_elbv2_only_registration"] != "" {
+		v, err := strconv.ParseBool(service.Attrs["eureka_elbv2_only_registration"])
+		if err != nil {
+			log.Errorf("eureka_elbv2_only_registration must be valid boolean, was %v : %s", v, err)
+			return true
+		}
+		return v
+	}
+	return true
+}
+
+// GetUniqueID Note: Helper function reimplemented here to avoid segfault calling it on fargo.Instance struct
+func GetUniqueID(instance fargo.Instance) string {
+	return instance.HostName + "_" + strconv.Itoa(instance.Port)
+}
+
+
 
 // Get Load balancer and target group using a service and cluster name (more efficient)
 func getLoadBalancerFromService(serviceName string, clusterName string) (*elbv2.LoadBalancer, *elbv2.TargetGroup, error) {
@@ -219,62 +199,18 @@ func getTargetGroupsPage(svc *elbv2.ELBV2, marker *string) (*elbv2.DescribeTarge
 	return tg, nil
 }
 
-// GetELBV2ForContainer returns an LBInfo struct with the load balancer DNS name and listener port for a given instanceId and port
-// if an error occurs, or the target is not found, an empty LBInfo is returned.
+// GetELBV2ForContainer returns an LoadBalancerRegistrationInfo struct with the load balancer DNS name and listener port for a given instanceId and port
+// if an error occurs, or the target is not found, an empty LoadBalancerRegistrationInfo is returned.
 // Pass it the instanceID for the docker host, and the the host port to lookup the associated ELB.
 //
-func GetELBV2ForContainer(containerID string, instanceID string, port int64, clusterName string, taskArn string, serviceName string) (lbinfo *LBInfo, err error) {
+func GetELBV2ForContainer(containerID string, instanceID string, port int64, clusterName string, taskArn string, serviceName string) (lbinfo *LoadBalancerRegistrationInfo, err error) {
 	i := lookupValues{InstanceID: instanceID, Port: port, ClusterName: clusterName, TaskArn: taskArn, ServiceName: serviceName}
-	out, err := getAndCache(containerID, i, getLB, gocache.NoExpiration)
+	out, err := GetAndCache("container_"+containerID, i, getELBAndCacheDetails, gocache.NoExpiration)
 	if out == nil || err != nil {
 		return nil, err
 	}
-	ret, _ := out.(*LBInfo)
+	ret, _ := out.(*LoadBalancerRegistrationInfo)
 	return ret, err
-}
-
-// GetHealthyTargets Get a list of healthy targets given a target group ARN.  Cache for default interval
-func GetHealthyTargets(tgArn string) (thds []*elbv2.TargetHealthDescription, err error) {
-	var healthCheckCacheTime time.Duration
-	if refreshInterval != 0 {
-		healthCheckCacheTime = (time.Duration(refreshInterval) * time.Second) - (1 * time.Second)
-	} else {
-		healthCheckCacheTime = DEFAULT_EXP_TIME
-	}
-
-	out, err := getAndCache(tgArn, tgArn, getHealthyTargets, healthCheckCacheTime)
-	if out == nil || err != nil {
-		return nil, err
-	}
-	ret, _ := out.([]*elbv2.TargetHealthDescription)
-	return ret, err
-}
-
-// Actual func outside of caching mechanism
-func getHealthyTargets(tgArn string) (ths []*elbv2.TargetHealthDescription, err error) {
-	log.Debugf("Looking for healthy targets")
-	svc, err := getSession()
-	if err != nil {
-		return nil, err
-	}
-
-	thParams := &elbv2.DescribeTargetHealthInput{
-		TargetGroupArn: awssdk.String(tgArn),
-	}
-
-	tarH, err := svc.DescribeTargetHealth(thParams)
-	if err != nil || tarH == nil {
-		log.Errorf("An error occurred using DescribeTargetHealth: %s \n", err.Error())
-		return nil, err
-	}
-
-	var healthyTargets []*elbv2.TargetHealthDescription
-	for _, thd := range tarH.TargetHealthDescriptions {
-		if *thd.TargetHealth.State == "healthy" {
-			healthyTargets = append(healthyTargets, thd)
-		}
-	}
-	return healthyTargets, nil
 }
 
 // Lookup the service name from the ECS cluster and taskArn.  A bit janky, but works.
@@ -359,14 +295,14 @@ func lookupServiceName(clusterName string, taskArn string) string {
 // Does the real work of retrieving the load balancer details, given a lookupValues struct.
 // Note: This function uses caching extensively to reduce the burden on the AWS API when called from multiple goroutines
 //
-func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
+func getELBAndCacheDetails(l lookupValues) (lbinfo *LoadBalancerRegistrationInfo, err error) {
 	instanceID := l.InstanceID
 	port := l.Port
 
 	var lbArns []*string
 	var lbPort *int64
 	var tgArn string
-	info := &LBInfo{}
+	info := &LoadBalancerRegistrationInfo{}
 	var clusterName string
 	var serviceName string
 
@@ -399,7 +335,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 		// There could be thousands of these, and we need to check them all.
 		// much better to have a service name to use.
 
-		out1, err := getAndCache("tg", svc, getAllTargetGroups, DEFAULT_EXP_TIME)
+		out1, err := GetAndCache("tg", svc, getAllTargetGroups, DEFAULT_EXP_TIME)
 		if err != nil || out1 == nil {
 			message := fmt.Errorf("Failed to retrieve Target Groups: %s", err)
 			return nil, message
@@ -416,7 +352,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 					TargetGroupArn: awssdk.String(*tg.TargetGroupArn),
 				}
 
-				out2, err := getAndCache(*thParams.TargetGroupArn, thParams, svc.DescribeTargetHealth, DEFAULT_EXP_TIME)
+				out2, err := GetAndCache("tg_arn_"+*thParams.TargetGroupArn, thParams, svc.DescribeTargetHealth, DEFAULT_EXP_TIME)
 				if err != nil || out2 == nil {
 					log.Errorf("An error occurred using DescribeTargetHealth: %s \n", err.Error())
 					return nil, err
@@ -458,7 +394,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	lsnrParams := &elbv2.DescribeListenersInput{
 		LoadBalancerArn: lbArns[0],
 	}
-	out3, err := getAndCache("lsnr_"+*lsnrParams.LoadBalancerArn, lsnrParams, svc.DescribeListeners, DEFAULT_EXP_TIME)
+	out3, err := GetAndCache("lsnr_"+*lsnrParams.LoadBalancerArn, lsnrParams, svc.DescribeListeners, DEFAULT_EXP_TIME)
 	if err != nil || out3 == nil {
 		log.Errorf("An error occurred using DescribeListeners: %s \n", err.Error())
 		return nil, err
@@ -482,7 +418,7 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	lbParams := &elbv2.DescribeLoadBalancersInput{
 		LoadBalancerArns: lbArns,
 	}
-	out4, err := getAndCache("lb_"+*lbParams.LoadBalancerArns[0], lbParams, svc.DescribeLoadBalancers, DEFAULT_EXP_TIME)
+	out4, err := GetAndCache("lb_"+*lbParams.LoadBalancerArns[0], lbParams, svc.DescribeLoadBalancers, DEFAULT_EXP_TIME)
 	if err != nil || out4 == nil {
 		log.Errorf("An error occurred using DescribeLoadBalancers: %s \n", err.Error())
 		return nil, err
@@ -491,87 +427,64 @@ func getLB(l lookupValues) (lbinfo *LBInfo, err error) {
 	log.Debugf("LB Endpoint for Instance:%v Port:%v, Target Group:%v, is: %s:%s\n", instanceID, port, tgArn, *lbData.LoadBalancers[0].DNSName, strconv.FormatInt(*lbPort, 10))
 
 	info.DNSName = *lbData.LoadBalancers[0].DNSName
-	info.Port = *lbPort
+	info.Port = int(*lbPort)
 	info.TargetGroupArn = tgArn
 	return info, nil
 }
 
-// CheckELBFlags - Helper function to check if the correct config flags are set to use ELBs
-// We accept two possible configurations here - either eureka_lookup_elbv2_endpoint can be set,
-// for automatic lookup, or eureka_elbv2_hostname, eureka_elbv2_port and eureka_elbv2_targetgroup can be set manually
-// to avoid the 10-20s wait for lookups
-func CheckELBFlags(service *bridge.Service) bool {
-
-	isAws := service.Attrs["eureka_datacenterinfo_name"] != fargo.MyOwn
-	var hasExplicit bool
-	var useLookup bool
-
-	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" && service.Attrs["eureka_elbv2_targetgroup"] != "" {
-		v, err := strconv.ParseUint(service.Attrs["eureka_elbv2_port"], 10, 16)
-		if err != nil {
-			log.Errorf("eureka_elbv2_port must be valid 16-bit unsigned int, was %v : %s", v, err)
-			hasExplicit = false
-		}
-		hasExplicit = true
-		useLookup = true
-	}
-
-	if service.Attrs["eureka_lookup_elbv2_endpoint"] != "" {
-		v, err := strconv.ParseBool(service.Attrs["eureka_lookup_elbv2_endpoint"])
-		if err != nil {
-			log.Errorf("eureka_lookup_elbv2_endpoint must be valid boolean, was %v : %s", v, err)
-			useLookup = false
-		}
-		useLookup = v
-	}
-
-	if (hasExplicit || useLookup) && isAws {
-		return true
-	}
-	return false
-}
-
-// CheckELBOnlyReg - Helper function to check if only the ELB should be registered (no containers)
-func CheckELBOnlyReg(service *bridge.Service) bool {
-
-	if service.Attrs["eureka_elbv2_only_registration"] != "" {
-		v, err := strconv.ParseBool(service.Attrs["eureka_elbv2_only_registration"])
-		if err != nil {
-			log.Errorf("eureka_elbv2_only_registration must be valid boolean, was %v : %s", v, err)
-			return true
-		}
-		return v
-	}
-	return true
-}
-
-// GetUniqueID Note: Helper function reimplemented here to avoid segfault calling it on fargo.Instance struct
-func GetUniqueID(instance fargo.Instance) string {
-	return instance.HostName + "_" + strconv.Itoa(instance.Port)
-}
 
 // Helper function to alter registration info and add the ELBv2 endpoint
 // useCache parameter is passed to getELBV2ForContainer
-func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.Instance {
+func mutateRegistrationInfo(service *bridge.Service, registration *fargo.Instance) *fargo.Instance {
 
+	elbMetadata, err := getELBMetadata(service, registration.HostName, registration.Port)
+	if err != nil {
+		return nil
+	}
+
+	registration.IPAddr = elbMetadata.IpAddress
+	registration.VipAddress = elbMetadata.VipAddress
+	registration.Port = elbMetadata.Port
+	registration.HostName = elbMetadata.DNSName
+
+	registration.SetMetadataString("has-elbv2", "true")
+	registration.SetMetadataString("elbv2-endpoint", elbMetadata.ELBEndpoint)
+	registration.VipAddress = registration.IPAddr
+
+	if CheckELBOnlyReg(service) {
+		// Remove irrelevant metadata from an ELB only registration
+		registration.DataCenterInfo.Metadata = fargo.AmazonMetadataType{
+			InstanceID:     GetUniqueID(*registration), // This is deliberate - due to limitations in uniqueIDs
+			PublicHostname: registration.HostName,
+			HostName:       registration.HostName,
+		}
+		registration.SetMetadataString("container-id", "")
+		registration.SetMetadataString("container-name", "")
+		registration.SetMetadataString("aws-instance-id", "")
+	}
+
+	// Reduce lease time for ALBs to have them drop out of eureka quicker
+	registration.LeaseInfo = fargo.LeaseInfo{
+		DurationInSecs: 35,
+	}
+
+	return registration
+}
+
+
+func getELBMetadata(service *bridge.Service, hostName string, port int) (LoadBalancerRegistrationInfo, error) {
+	var elbMetadata LoadBalancerRegistrationInfo
 	awsMetadata := GetMetadata()
-	var elbEndpoint string
-	var elbMetadata LBInfo
 
 	// We've been given the ELB endpoint, so use this
 	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" && service.Attrs["eureka_elbv2_targetgroup"] != "" {
 		log.Debugf("found ELBv2 hostname=%v, port=%v and TG=%v options, using these.", service.Attrs["eureka_elbv2_hostname"], service.Attrs["eureka_elbv2_port"], service.Attrs["eureka_elbv2_targetgroup"])
-		registration.Port, _ = strconv.Atoi(service.Attrs["eureka_elbv2_port"])
-		registration.HostName = service.Attrs["eureka_elbv2_hostname"]
-		registration.IPAddr = ""
-		registration.VipAddress = ""
-		elbEndpoint = service.Attrs["eureka_elbv2_hostname"] + "_" + service.Attrs["eureka_elbv2_port"]
-		elbMetadata = LBInfo{
-			Port:           int64(registration.Port),
-			DNSName:        registration.HostName,
-			TargetGroupArn: service.Attrs["eureka_elbv2_targetgroup"],
-		}
-
+		elbMetadata.Port, _ = strconv.Atoi(service.Attrs["eureka_elbv2_port"])
+		elbMetadata.DNSName = service.Attrs["eureka_elbv2_hostname"]
+		elbMetadata.TargetGroupArn = service.Attrs["eureka_elbv2_targetgroup"]
+		elbMetadata.ELBEndpoint = service.Attrs["eureka_elbv2_hostname"] + "_" + service.Attrs["eureka_elbv2_port"]
+		elbMetadata.IpAddress = ""
+		AddToCache("container_" + service.Origin.ContainerID, &elbMetadata, gocache.NoExpiration)
 	} else {
 		// We don't have the ELB endpoint, so look it up.
 		// Check for some ECS labels first, these will allow more efficient lookups
@@ -590,40 +503,17 @@ func setRegInfo(service *bridge.Service, registration *fargo.Instance) *fargo.In
 			serviceName = service.Attrs["ecs_service"]
 		}
 
-		elbMetadata1, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(registration.Port), clusterName, taskArn, serviceName)
+		elbMetadata1, err := GetELBV2ForContainer(service.Origin.ContainerID, awsMetadata.InstanceID, int64(port), clusterName, taskArn, serviceName)
 		if err != nil || elbMetadata1 == nil {
-			log.Errorf("Unable to find associated ELBv2 for service: %s, instance: %s hostname: %s port: %v, Error: %s\n", service.Name, awsMetadata.InstanceID, registration.HostName, registration.Port, err)
-			return nil
+			log.Errorf("Unable to find associated ELBv2 for service: %s, instance: %s hostname: %s port: %v, Error: %s\n", service.Name, awsMetadata.InstanceID, hostName, port, err)
+			return elbMetadata, fmt.Errorf("No ELB data available")
 		}
 		elbMetadata = *elbMetadata1
 
-		elbStrPort := strconv.FormatInt(elbMetadata.Port, 10)
-		elbEndpoint = elbMetadata.DNSName + "_" + elbStrPort
-		registration.Port = int(elbMetadata.Port)
-		registration.IPAddr = ""
-		registration.HostName = elbMetadata.DNSName
+		elbMetadata.ELBEndpoint = elbMetadata.DNSName + "_" + strconv.Itoa(elbMetadata.Port)
+		elbMetadata.IpAddress = ""
 	}
-
-	if CheckELBOnlyReg(service) {
-		// Remove irrelevant metadata from an ELB only registration
-		registration.DataCenterInfo.Metadata = fargo.AmazonMetadataType{
-			InstanceID:     GetUniqueID(*registration), // This is deliberate - due to limitations in uniqueIDs
-			PublicHostname: registration.HostName,
-			HostName:       registration.HostName,
-		}
-		registration.SetMetadataString("container-id", "")
-		registration.SetMetadataString("container-name", "")
-		registration.SetMetadataString("aws-instance-id", "")
-	}
-
-	// Reduce lease time for ALBs to have them drop out of eureka quicker
-	registration.LeaseInfo = fargo.LeaseInfo{
-		DurationInSecs: 35,
-	}
-	registration.SetMetadataString("has-elbv2", "true")
-	registration.SetMetadataString("elbv2-endpoint", elbEndpoint)
-	registration.VipAddress = registration.IPAddr
-	return registration
+	return elbMetadata, nil
 }
 
 // Check an ELB's initial status in eureka
@@ -636,65 +526,12 @@ func getELBStatus(client fargo.EurekaConnection, registration *fargo.Instance) f
 	return result.Status
 }
 
-// Return appropriate registration statuses based on input and cached ELB data
-func testStatus(containerID string, eurekaStatus fargo.StatusType, inputStatus fargo.StatusType) (newStatus fargo.StatusType, regStatus fargo.StatusType) {
-
-	// Nothing to do if eureka says we're up, just return UP
-	if eurekaStatus == fargo.UP {
-		return fargo.UP, fargo.UP
-	}
-
-	if inputStatus != fargo.UP {
-		log.Debugf("Previous status was: %v, need to check for healthy targets.", inputStatus)
-		// The ELB data should be cached, so just get it from there.
-		result, found := generalCache.Get(containerID)
-		if !found {
-			log.Errorf("Unable to retrieve ELB data from cache.  Cannot check for healthy targets!")
-			return fargo.UNKNOWN, fargo.STARTING
-		}
-		elbMetadata, ok := result.(*LBInfo)
-		if !ok {
-			log.Errorf("Unable to convert LBInfo from cache.  Cannot check for healthy targets!")
-			return fargo.UNKNOWN, fargo.STARTING
-		}
-		log.Debugf("Looking up healthy targets for TG: %v", elbMetadata.TargetGroupArn)
-		thList, err2 := GetHealthyTargets(elbMetadata.TargetGroupArn)
-		if err2 != nil {
-			log.Errorf("An error occurred looking up healthy targets, for target group: %s, will set to STARTING in eureka. Error: %s\n", elbMetadata.TargetGroupArn, err2)
-			return fargo.UNKNOWN, fargo.STARTING
-		}
-		if len(thList) == 0 {
-			log.Infof("Waiting on a healthy target in TG: %s - currently all UNHEALTHY.  Setting eureka state to STARTING.  This is normal for a new service which is starting up.  It may indicate a problem otherwise.", elbMetadata.TargetGroupArn)
-			return fargo.STARTING, fargo.STARTING
-		}
-		log.Debugf("Found %v healthy targets for target group: %s.  Setting eureka state to UP.", len(thList), elbMetadata.TargetGroupArn)
-		return fargo.UP, fargo.UP
-	}
-	return fargo.UP, fargo.UP
-}
-
-// Test eureka registration status and mutate registration accordingly depending on container health.
-func testHealth(service *bridge.Service, client fargo.EurekaConnection, elbReg *fargo.Instance) {
-	containerID := service.Origin.ContainerID
-
-	// Get actual eureka status and lookup previous logical registration status
-	eurekaStatus := getELBStatus(client, elbReg)
-	log.Debugf("Eureka status check gave: %v", eurekaStatus)
-	last := getPreviousStatus(containerID)
-
-	// Work out an appropriate registration status given previous and current values
-	newStatus, regStatus := testStatus(containerID, eurekaStatus, last)
-	setPreviousStatus(containerID, newStatus)
-	elbReg.Status = regStatus
-	log.Debugf("Status health check returned prev: %v registration: %v", last, elbReg.Status)
-}
-
 // RegisterWithELBv2 - If called, and flags are active, register an ELBv2 endpoint instead of the container directly
 // This will mean traffic is directed to the ALB rather than directly to containers
 func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
 	if CheckELBFlags(service) {
 		log.Debugf("Found ELBv2 flags, will attempt to register LB for: %s\n", GetUniqueID(*registration))
-		elbReg := setRegInfo(service, registration)
+		elbReg := mutateRegistrationInfo(service, registration)
 		if elbReg != nil {
 			testHealth(service, client, elbReg)
 			err := client.ReregisterInstance(elbReg)
@@ -710,7 +547,7 @@ func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, cl
 			period := time.Duration(time.Millisecond*time.Duration(random)) + modifier + time.Duration(DEFAULT_EXP_TIME*time.Duration(i))
 			log.Debugf("Retrying retrieval of ELBv2 data, attempt %v/3 - Waiting for %v seconds", i, period)
 			time.Sleep(period)
-			elbReg = setRegInfo(service, registration)
+			elbReg = mutateRegistrationInfo(service, registration)
 			if elbReg != nil {
 				testHealth(service, client, elbReg)
 				err := client.ReregisterInstance(elbReg)
@@ -725,7 +562,7 @@ func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, cl
 func HeartbeatELBv2(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
 	if CheckELBFlags(service) {
 		log.Debugf("Heartbeating ELBv2: %s\n", GetUniqueID(*registration))
-		elbReg := setRegInfo(service, registration)
+		elbReg := mutateRegistrationInfo(service, registration)
 		if elbReg != nil {
 			err := client.HeartBeatInstance(elbReg)
 			// If the status of the ELB has not established as up, then recheck the health

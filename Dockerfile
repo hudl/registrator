@@ -1,4 +1,4 @@
-FROM alpine:3.5
+FROM alpine:3.8
 ENTRYPOINT ["/bin/run-registrator.sh"]
 
 RUN mkdir /logs

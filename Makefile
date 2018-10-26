@@ -21,7 +21,7 @@ dev-run:
 		--net=host \
 		-v /var/run/docker.sock:/tmp/docker.sock \
 		-e "FARGO_LOG_LEVEL=NOTICE" \
-		-e "SERVICE_EUREKA_DATACENTERINFO_AUTO_POPULATE=false"
+		-e "SERVICE_EUREKA_DATACENTERINFO_AUTO_POPULATE=false"\
 		$(NAME):dev $(DEV_RUN_OPTS)
 
 dev-run-resync:
