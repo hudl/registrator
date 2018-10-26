@@ -42,7 +42,7 @@ func GetHealthyTargets(tgArn string) (thds []*elbv2.TargetHealthDescription, err
 		healthCheckCacheTime = DEFAULT_EXP_TIME
 	}
 
-	out, err := GetAndCache(tgArn, tgArn, getHealthyTargets, healthCheckCacheTime)
+	out, err := GetAndCache("tg_arn_" + tgArn, tgArn, getHealthyTargets, healthCheckCacheTime)
 	if out == nil || err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func determineNewEurekaStatus(containerID string, eurekaStatus fargo.StatusType,
 	if inputStatus != fargo.UP {
 		log.Debugf("Previous status was: %v, need to check for healthy targets.", inputStatus)
 		// The ELB data should be cached, so just get it from there.
-		result, found := generalCache.Get(containerID)
+		result, found := generalCache.Get("container_" + containerID)
 		if !found {
 			log.Errorf("Unable to retrieve ELB data from cache.  Cannot check for healthy targets!")
 			return statusChange{newStatus: fargo.UNKNOWN, registrationStatus: fargo.STARTING}

@@ -14,8 +14,8 @@ func setupTHDCache(tgArn string, thds []*elbv2.TargetHealthDescription) {
 	fn2 := func(thds []*elbv2.TargetHealthDescription) ([]*elbv2.TargetHealthDescription, error) {
 		return thds, nil
 	}
-	GetAndCache(tgArn, thds, fn2, gocache.NoExpiration)
-	r, _ := generalCache.Get(tgArn)
+	GetAndCache("tg_arn_" + tgArn, thds, fn2, gocache.NoExpiration)
+	r, _ := generalCache.Get("tg_arn_" + tgArn)
 	fmt.Printf("THD Cache value now looks like this: %+v\n", r.([]*elbv2.TargetHealthDescription))
 }
 
@@ -37,7 +37,7 @@ func Test_testHealth(t *testing.T) {
 	setupCache("123123412", "instance-123", "correct-lb-dnsname", 1234, 9001, tgArn, unhealthyTHDs)
 
 	t.Run("Should return STARTING because of unhealthy targets", func(t *testing.T) {
-		RemoveKeyFromCache(tgArn)
+		RemoveKeyFromCache("tg_arn_"+tgArn)
 		setupTHDCache(tgArn, unhealthyTHDs)
 		var previousStatus fargo.StatusType
 		eurekaStatus := fargo.UNKNOWN
@@ -54,7 +54,7 @@ func Test_testHealth(t *testing.T) {
 	})
 
 	t.Run("Should return UP because of healthy targets 1", func(t *testing.T) {
-		RemoveKeyFromCache(tgArn)
+		RemoveKeyFromCache("tg_arn_"+tgArn)
 		setupTHDCache(tgArn, healthyTHDs)
 		previousStatus := fargo.UNKNOWN
 		eurekaStatus := fargo.UNKNOWN
@@ -71,7 +71,7 @@ func Test_testHealth(t *testing.T) {
 	})
 
 	t.Run("Should fail gracefully", func(t *testing.T) {
-		RemoveKeyFromCache(tgArn)
+		RemoveKeyFromCache("tg_arn_"+tgArn)
 		setupTHDCache(tgArn, healthyTHDs)
 		previousStatus := fargo.UNKNOWN
 		eurekaStatus := fargo.UNKNOWN
@@ -88,7 +88,7 @@ func Test_testHealth(t *testing.T) {
 	})
 
 	t.Run("Should return UP because of eureka status", func(t *testing.T) {
-		RemoveKeyFromCache(tgArn)
+		RemoveKeyFromCache("tg_arn_"+tgArn)
 		setupTHDCache(tgArn, unhealthyTHDs)
 
 		previousStatus := fargo.UNKNOWN
@@ -106,7 +106,7 @@ func Test_testHealth(t *testing.T) {
 	})
 
 	t.Run("Should return UP because of healthy targets 2", func(t *testing.T) {
-		RemoveKeyFromCache(tgArn)
+		RemoveKeyFromCache("tg_arn_"+tgArn)
 		setupTHDCache(tgArn, healthyTHDs)
 
 		previousStatus := fargo.STARTING

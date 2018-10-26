@@ -205,7 +205,7 @@ func getTargetGroupsPage(svc *elbv2.ELBV2, marker *string) (*elbv2.DescribeTarge
 //
 func GetELBV2ForContainer(containerID string, instanceID string, port int64, clusterName string, taskArn string, serviceName string) (lbinfo *LoadBalancerRegistrationInfo, err error) {
 	i := lookupValues{InstanceID: instanceID, Port: port, ClusterName: clusterName, TaskArn: taskArn, ServiceName: serviceName}
-	out, err := GetAndCache(containerID, i, getELBAndCacheDetails, gocache.NoExpiration)
+	out, err := GetAndCache("container_"+containerID, i, getELBAndCacheDetails, gocache.NoExpiration)
 	if out == nil || err != nil {
 		return nil, err
 	}
@@ -352,7 +352,7 @@ func getELBAndCacheDetails(l lookupValues) (lbinfo *LoadBalancerRegistrationInfo
 					TargetGroupArn: awssdk.String(*tg.TargetGroupArn),
 				}
 
-				out2, err := GetAndCache(*thParams.TargetGroupArn, thParams, svc.DescribeTargetHealth, DEFAULT_EXP_TIME)
+				out2, err := GetAndCache("tg_arn_"+*thParams.TargetGroupArn, thParams, svc.DescribeTargetHealth, DEFAULT_EXP_TIME)
 				if err != nil || out2 == nil {
 					log.Errorf("An error occurred using DescribeTargetHealth: %s \n", err.Error())
 					return nil, err
@@ -484,7 +484,7 @@ func getELBMetadata(service *bridge.Service, hostName string, port int) (LoadBal
 		elbMetadata.TargetGroupArn = service.Attrs["eureka_elbv2_targetgroup"]
 		elbMetadata.ELBEndpoint = service.Attrs["eureka_elbv2_hostname"] + "_" + service.Attrs["eureka_elbv2_port"]
 		elbMetadata.IpAddress = ""
-		AddToCache(service.Origin.ContainerID, &elbMetadata, gocache.NoExpiration)
+		AddToCache("container_" + service.Origin.ContainerID, &elbMetadata, gocache.NoExpiration)
 	} else {
 		// We don't have the ELB endpoint, so look it up.
 		// Check for some ECS labels first, these will allow more efficient lookups

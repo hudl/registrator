@@ -75,9 +75,9 @@ func setupCache(containerID string, instanceID string, lbDNSName string, contain
 	fn2 := func(thds []*elbv2.TargetHealthDescription) ([]*elbv2.TargetHealthDescription, error) {
 		return thds, nil
 	}
-	GetAndCache(containerID, i, fn, gocache.NoExpiration)
-	GetAndCache(tgArn, thds, fn2, gocache.NoExpiration)
-	r, _ := generalCache.Get(containerID)
+	GetAndCache("container_" + containerID, i, fn, gocache.NoExpiration)
+	GetAndCache("tg_arn_" + tgArn, thds, fn2, gocache.NoExpiration)
+	r, _ := generalCache.Get("container_" + containerID)
 	fmt.Printf("Cache value now looks like this: %+v\n", r.(*LoadBalancerRegistrationInfo))
 }
 
@@ -299,7 +299,7 @@ func Test_mutateRegistrationInfo(t *testing.T) {
 	// Init LB info cache
 	setupCache("123123412", "instance-123", "correct-lb-dnsname", 1234, 9001, tgArn, thds)
 
-	r, _ := generalCache.Get("123123412")
+	r, _ := generalCache.Get("container_123123412")
 	lb := r.(*LoadBalancerRegistrationInfo)
 	wantedAwsInfo := eureka.AmazonMetadataType{
 		PublicHostname: lb.DNSName,
@@ -531,7 +531,7 @@ func Test_mutateRegistrationInfoExplicitEndpointCachesData(t *testing.T) {
 	t.Run("Should return UP and find LB value in cache", func(t *testing.T) {
 
 		_ = mutateRegistrationInfo(&svc, &reg)
-		entry, present := generalCache.Get("123123412")
+		entry, present := generalCache.Get("container_123123412")
 		if !present {
 			t.Errorf("Value not in cache")
 		}
@@ -597,8 +597,7 @@ func Test_mutateRegistrationInfoELBv2Only(t *testing.T) {
 		},
 	}
 	// Force parsing of metadata
-	err, val := reg.Metadata.GetString("is-container")
-	log.Debugf("container-id is %v\n", val)
+	err, _ := reg.Metadata.GetString("elbv2-endpoint")
 	if err != "" {
 		t.Errorf("Unable to parse metadata")
 	}
@@ -607,7 +606,7 @@ func Test_mutateRegistrationInfoELBv2Only(t *testing.T) {
 	tgArn := "arn:1234"
 	setupCache("123123412", "instance-123", "correct-hostname", 1234, 12345, tgArn, thds)
 
-	r, _ := generalCache.Get("123123412")
+	r, _ := generalCache.Get("container_123123412")
 	lb := r.(*LoadBalancerRegistrationInfo)
 	wantedAwsInfo := eureka.AmazonMetadataType{
 		PublicHostname: lb.DNSName,
