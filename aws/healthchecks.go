@@ -1,12 +1,13 @@
 package aws
 
 import (
+	"sync"
+	"time"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/elbv2"
 	"github.com/gliderlabs/registrator/bridge"
 	"github.com/hudl/fargo"
-	"sync"
-	"time"
 )
 
 type statusChange struct {
@@ -42,7 +43,7 @@ func GetHealthyTargets(tgArn string) (thds []*elbv2.TargetHealthDescription, err
 		healthCheckCacheTime = DEFAULT_EXP_TIME
 	}
 
-	out, err := GetAndCache("tg_arn_" + tgArn, tgArn, getHealthyTargets, healthCheckCacheTime)
+	out, err := GetAndCache("tg_arn_"+tgArn, tgArn, getHealthyTargets, healthCheckCacheTime)
 	if out == nil || err != nil {
 		return nil, err
 	}
@@ -117,7 +118,7 @@ func determineNewEurekaStatus(containerID string, eurekaStatus fargo.StatusType,
 		log.Debugf("Looking up healthy targets for TG: %v", elbMetadata.TargetGroupArn)
 		thList, err2 := GetHealthyTargets(elbMetadata.TargetGroupArn)
 		if err2 != nil {
-			log.Errorf("An error occurred looking up healthy targets, for target group: %s, will set to STARTING in eureka. Error: %s\n", elbMetadata.TargetGroupArn, err2)
+			log.Warningf("An error occurred looking up healthy targets, for target group: %s, will set to STARTING in eureka. Error: %s\n", elbMetadata.TargetGroupArn, err2)
 			return statusChange{newStatus: fargo.UNKNOWN, registrationStatus: fargo.STARTING}
 		}
 		if len(thList) == 0 {
