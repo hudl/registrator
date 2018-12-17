@@ -12,7 +12,7 @@ infrastructure:
       - REGISTRATOR_LOG_LEVEL: "INFO"
       - FARGO_LOG_LEVEL: "NOTICE"
     requirements:
-      cpu_units: 128
+      cpu_units: 10
       soft_memory_limit: 16
       hard_memory_limit: 64
       networking_mode: host
