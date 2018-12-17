@@ -1,4 +1,4 @@
-schema: 1.3.1
+schema: 1.5.0
 
 service:
   name:  registrator
@@ -13,8 +13,8 @@ infrastructure:
       - FARGO_LOG_LEVEL: "NOTICE"
     requirements:
       cpu_units: 10
-      soft_memory_limit: 128
-      hard_memory_limit: 256
+      soft_memory_limit: 16
+      hard_memory_limit: 64
       networking_mode: host
       docker_labels:
       - is-marvel: "false"
