@@ -515,6 +515,10 @@ func getELBMetadata(service *bridge.Service, hostName string, port int) (LoadBal
 func getELBStatus(client fargo.EurekaConnection, registration *fargo.Instance) fargo.StatusType {
 	result, err := client.GetInstance(registration.App, GetUniqueID(*registration))
 	if err != nil || result == nil {
+		// Can't find the ELB, this is more than likely expected. It takes a short amount of time
+		// after a container launch, for a new service, for the ELB to be fully provisioned. 
+		// This gets retried 3 times with the RegisterWithELBv2() method and an error is logged
+		// after each of those fail. 
 		log.Warningf("ELB not yet present, or error retrieving from eureka: %s\n", err)
 		return fargo.UNKNOWN
 	}
