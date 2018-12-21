@@ -48,7 +48,6 @@ func getECSSession() (*ecs.ECS, error) {
 	return ecs.New(sess, awssdk.NewConfig().WithRegion(awsMetadata.Region)), nil
 }
 
-
 // CheckELBFlags - Helper function to check if the correct config flags are set to use ELBs
 // We accept two possible configurations here - either eureka_lookup_elbv2_endpoint can be set,
 // for automatic lookup, or eureka_elbv2_hostname, eureka_elbv2_port and eureka_elbv2_targetgroup can be set manually
@@ -102,8 +101,6 @@ func CheckELBOnlyReg(service *bridge.Service) bool {
 func GetUniqueID(instance fargo.Instance) string {
 	return instance.HostName + "_" + strconv.Itoa(instance.Port)
 }
-
-
 
 // Get Load balancer and target group using a service and cluster name (more efficient)
 func getLoadBalancerFromService(serviceName string, clusterName string) (*elbv2.LoadBalancer, *elbv2.TargetGroup, error) {
@@ -432,7 +429,6 @@ func getELBAndCacheDetails(l lookupValues) (lbinfo *LoadBalancerRegistrationInfo
 	return info, nil
 }
 
-
 // Helper function to alter registration info and add the ELBv2 endpoint
 // useCache parameter is passed to getELBV2ForContainer
 func mutateRegistrationInfo(service *bridge.Service, registration *fargo.Instance) *fargo.Instance {
@@ -471,7 +467,6 @@ func mutateRegistrationInfo(service *bridge.Service, registration *fargo.Instanc
 	return registration
 }
 
-
 func getELBMetadata(service *bridge.Service, hostName string, port int) (LoadBalancerRegistrationInfo, error) {
 	var elbMetadata LoadBalancerRegistrationInfo
 	awsMetadata := GetMetadata()
@@ -484,7 +479,7 @@ func getELBMetadata(service *bridge.Service, hostName string, port int) (LoadBal
 		elbMetadata.TargetGroupArn = service.Attrs["eureka_elbv2_targetgroup"]
 		elbMetadata.ELBEndpoint = service.Attrs["eureka_elbv2_hostname"] + "_" + service.Attrs["eureka_elbv2_port"]
 		elbMetadata.IpAddress = ""
-		AddToCache("container_" + service.Origin.ContainerID, &elbMetadata, gocache.NoExpiration)
+		AddToCache("container_"+service.Origin.ContainerID, &elbMetadata, gocache.NoExpiration)
 	} else {
 		// We don't have the ELB endpoint, so look it up.
 		// Check for some ECS labels first, these will allow more efficient lookups
@@ -520,7 +515,11 @@ func getELBMetadata(service *bridge.Service, hostName string, port int) (LoadBal
 func getELBStatus(client fargo.EurekaConnection, registration *fargo.Instance) fargo.StatusType {
 	result, err := client.GetInstance(registration.App, GetUniqueID(*registration))
 	if err != nil || result == nil {
-		log.Errorf("ELB not yet present, or error retrieving from eureka: %s\n", err)
+		// Can't find the ELB, this is more than likely expected. It takes a short amount of time
+		// after a container launch, for a new service, for the ELB to be fully provisioned. 
+		// This gets retried 3 times with the RegisterWithELBv2() method and an error is logged
+		// after each of those fail. 
+		log.Warningf("ELB not yet present, or error retrieving from eureka: %s\n", err)
 		return fargo.UNKNOWN
 	}
 	return result.Status
