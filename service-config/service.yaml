@@ -21,7 +21,7 @@ infrastructure:
       deployment_options:
         minimum_healthy_percent: 50
         maximum_percent: 100
-      scheduling_strategy: DAEMON_SCHEDULING_STRATEGY
+      scheduling_strategy: DAEMON
       log_paths:
       - sourceCategory: app_registrator
         pathExpression: /var/log/app_registrator/**
