@@ -323,16 +323,26 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	if isgroup && !metadataFromPort["name"] {
 		service.Name += "-" + port.ExposedPort
 	}
-	var p int
+	var convertedPort int
 
 	if b.config.Internal == true {
 		service.IP = port.ExposedIP
-		p, _ = strconv.Atoi(port.ExposedPort)
+		p, err := strconv.Atoi(port.ExposedPort)
+		if err != nil {
+			log.Error("Unable to parse string ExposedPort to int: %s", port.ExposedPort)
+		} else {
+			convertedPort = p
+		}
 	} else {
 		service.IP = port.HostIP
-		p, _ = strconv.Atoi(port.HostPort)
+		p, err := strconv.Atoi(port.HostPort)
+		if err != nil {
+			log.Error("Unable to parse string HostPort to int: %s", port.HostPort)
+		} else {
+			convertedPort = p
+		}
 	}
-	service.Port = p
+	service.Port = convertedPort
 
 	if b.config.UseIpFromLabel != "" {
 		containerIp := container.Config.Labels[b.config.UseIpFromLabel]
@@ -461,5 +471,10 @@ var Hostname string
 func init() {
 	// It's ok for Hostname to ultimately be an empty string
 	// An empty string will fall back to trying to make a best guess
-	Hostname, _ = os.Hostname()
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Errorf("Failed to get os.Hostname", err)
+	} else {
+		Hostname = hostname
+	}
 }

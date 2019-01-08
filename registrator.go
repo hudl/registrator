@@ -60,6 +60,15 @@ func main() {
 	logging.Configure()
 
 	log.Infof("Starting registrator %s ...", Version)
+	quit := make(chan struct{})
+	defer func() {
+		if err := recover(); err != nil {
+			log.Fatalf("Panic Occured:", err)
+		} else {
+			close(quit)
+			log.Critical("Docker event loop closed") // todo: reconnect?
+		}
+	}()
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
@@ -115,7 +124,7 @@ func main() {
 	if *deregister != "always" && *deregister != "on-success" {
 		assert(errors.New("-deregister must be \"always\" or \"on-success\""))
 	}
-
+	log.Info("Creating Bridge")
 	b, err := bridge.New(docker, flag.Arg(0), bridge.Config{
 		HostIp:          *hostIp,
 		Internal:        *internal,
@@ -127,8 +136,8 @@ func main() {
 		Cleanup:         *cleanup,
 		RequireLabel:    *requireLabel,
 	})
-
 	assert(err)
+	log.Info("Bridge Created")
 
 	attempt := 0
 	for *retryAttempts == -1 || attempt <= *retryAttempts {
@@ -150,9 +159,6 @@ func main() {
 	// Start event listener before listing containers to avoid missing anything
 	events := make(chan *dockerapi.APIEvents)
 	assert(docker.AddEventListener(events))
-	log.Debug("Listening for Docker events ...")
-
-	quit := make(chan struct{})
 
 	b.Sync(false)
 
@@ -165,6 +171,7 @@ func main() {
 				case <-ticker.C:
 					b.PruneDeadContainers()
 				case <-quit:
+					log.Debug("Quit message received. Exiting PruneDeadContainer loop")
 					ticker.Stop()
 					return
 				}
@@ -181,6 +188,7 @@ func main() {
 				case <-ticker.C:
 					b.Refresh()
 				case <-quit:
+					log.Debug("Quit message received. Exiting Refresh loop")
 					ticker.Stop()
 					return
 				}
@@ -197,6 +205,7 @@ func main() {
 				case <-resyncTicker.C:
 					b.Sync(true)
 				case <-quit:
+					log.Debug("Quit message received. Exiting Resync loop")
 					resyncTicker.Stop()
 					return
 				}
@@ -208,12 +217,11 @@ func main() {
 	for msg := range events {
 		switch msg.Status {
 		case "start":
+			log.Debugf("Docker Event Received: Start %s", msg.ID)
 			go b.Add(msg.ID)
 		case "die":
+			log.Debugf("Docker Event Received: Die %s", msg.ID)
 			go b.RemoveOnExit(msg.ID)
 		}
 	}
-
-	close(quit)
-	log.Critical("Docker event loop closed") // todo: reconnect?
 }

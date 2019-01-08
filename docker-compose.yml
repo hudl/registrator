@@ -1,0 +1,27 @@
+# Partial Compose to assist local debugging as opposed to Makefile
+version: '3'
+services:
+  eureka:
+    image: netflixoss/eureka:1.1.147
+  registrator:
+    depends_on:
+      - eureka
+    environment:
+        - FARGO_LOG_LEVEL=DEBUG
+        - REGISTRATOR_LOG_LEVEL=DEBUG
+        - SERVICE_EUREKA_DATACENTERINFO_AUTO_POPULATE=false
+        #- FARGO_LOG_LEVEL=DEBUG
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock
+    # Additional Options: -resync 30
+    command: "-ttl 30 -ttl-refresh 15 -ip 127.0.0.1 -require-label eureka://eureka:8080/eureka/v2"
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+  test_container:
+    image: busybox
+    depends_on:
+      - registrator
+    environment:
+      - SERVICE_REGISTER=true
+    command: "tail -f /dev/null"
