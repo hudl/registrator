@@ -1,4 +1,4 @@
-schema: 1.5.0
+schema: 1.5.1
 
 service:
   name:  registrator
@@ -21,8 +21,7 @@ infrastructure:
       deployment_options:
         minimum_healthy_percent: 50
         maximum_percent: 100
-      placement_constraints:
-      - type: distinctInstance
+      scheduling_strategy: DAEMON
       log_paths:
       - sourceCategory: app_registrator
         pathExpression: /var/log/app_registrator/**
