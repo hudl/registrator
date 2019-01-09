@@ -471,10 +471,5 @@ var Hostname string
 func init() {
 	// It's ok for Hostname to ultimately be an empty string
 	// An empty string will fall back to trying to make a best guess
-	hostname, err := os.Hostname()
-	if err != nil {
-		log.Errorf("Failed to get os.Hostname", err)
-	} else {
-		Hostname = hostname
-	}
+	Hostname, _ = os.Hostname()
 }
