@@ -9,7 +9,7 @@ infrastructure:
       environment_variables:
       - SERVICE_EUREKA_lookup_elbv2_endpoint: "false"
       - SERVICE_REGISTER: "false"
-      - REGISTRATOR_LOG_LEVEL: "INFO"
+      - REGISTRATOR_LOG_LEVEL: "DEBUG"
       - FARGO_LOG_LEVEL: "NOTICE"
     requirements:
       cpu_units: 10
@@ -42,7 +42,7 @@ infrastructure:
       - name: sys
         host_path: /sys
         container_path: /sys
-        read_only: true    
+        read_only: true
       - name: var_lib_docker
         host_path: /var/lib/docker/
         container_path: /var/lib/docker/
