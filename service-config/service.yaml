@@ -9,7 +9,7 @@ infrastructure:
       environment_variables:
       - SERVICE_EUREKA_lookup_elbv2_endpoint: "false"
       - SERVICE_REGISTER: "false"
-      - REGISTRATOR_LOG_LEVEL: "DEBUG"
+      - REGISTRATOR_LOG_LEVEL: "INFO"
       - FARGO_LOG_LEVEL: "NOTICE"
     requirements:
       cpu_units: 10
