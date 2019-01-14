@@ -1,6 +1,5 @@
 FROM alpine:3.8
 ENTRYPOINT ["/bin/run-registrator.sh"]
-
 RUN mkdir /logs
 ENV GOPATH /go
 COPY ./run-registrator.sh /bin

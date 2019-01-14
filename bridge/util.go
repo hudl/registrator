@@ -1,12 +1,16 @@
 package bridge
 
 import (
+	"io/ioutil"
+	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/cenkalti/backoff"
 	dockerapi "github.com/fsouza/go-dockerclient"
 )
+
+var ipLookupAddress = ""
 
 func retry(fn func() error) error {
 	return backoff.Retry(fn, backoff.NewExponentialBackOff())
@@ -18,6 +22,24 @@ func mapDefault(m map[string]string, key, default_ string) string {
 		return default_
 	}
 	return v
+}
+
+func SetExternalIPSource(lookupAddress string) {
+	ipLookupAddress = lookupAddress
+}
+
+func GetIPFromExternalSource() (string, error) {
+	res, err := http.Get(ipLookupAddress)
+	if err != nil {
+		log.Errorf("Failed to lookup IP Address from external source: %s", ipLookupAddress, err)
+		return "", err
+	}
+	ip, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		log.Error("Failed to read body of lookup from external source", err)
+		return "", err
+	}
+	return string(ip[:]), nil
 }
 
 // Golang regexp module does not support /(?!\\),/ syntax for spliting by not escaped comma

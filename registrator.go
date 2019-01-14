@@ -35,6 +35,11 @@ var retryAttempts = flag.Int("retry-attempts", 0, "Max retry attempts to establi
 var retryInterval = flag.Int("retry-interval", 2000, "Interval (in millisecond) between retry-attempts.")
 var cleanup = flag.Bool("cleanup", false, "Remove dangling services")
 var requireLabel = flag.Bool("require-label", false, "Only register containers which have the SERVICE_REGISTER label, and ignore all others.")
+var ipLookupSource = flag.String("ip-lookup-source", "", "Used to configure IP lookup source. Useful when running locally")
+
+// below IP regex was obtained from http://blog.markhatton.co.uk/2011/03/15/regular-expressions-for-ip-addresses-cidr-ranges-and-hostnames/
+var ipRegEx, _ = regexp.Compile(`^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$`)
+var discoveredIP = ""
 
 func getopt(name, def string) string {
 	if env := os.Getenv(name); env != "" {
@@ -90,8 +95,6 @@ func main() {
 	}
 
 	if *hostIp != "" {
-		// below IP regex was obtained from http://blog.markhatton.co.uk/2011/03/15/regular-expressions-for-ip-addresses-cidr-ranges-and-hostnames/
-		ipRegEx, _ := regexp.Compile(`^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$`)
 		if !ipRegEx.MatchString(*hostIp) {
 			fmt.Fprintf(os.Stderr, "Invalid IP address '%s', please use a valid address.\n", *hostIp)
 			os.Exit(2)
@@ -101,6 +104,14 @@ func main() {
 
 	if *requireLabel {
 		log.Info("SERVICE_REGISTER label is required to register containers.")
+	}
+
+	if *ipLookupSource != "" {
+		bridge.SetExternalIPSource(*ipLookupSource)
+		discoveredIP, err := bridge.GetIPFromExternalSource()
+		if err == nil {
+			log.Infof("ipLookupSource provided. Deferring to external source for IP address. Current IP is: %s", discoveredIP)
+		}
 	}
 
 	if (*refreshTtl == 0 && *refreshInterval > 0) || (*refreshTtl > 0 && *refreshInterval == 0) {
@@ -161,6 +172,27 @@ func main() {
 	assert(docker.AddEventListener(events))
 
 	b.Sync(false)
+
+	// Start a IP check ticker
+	ipTicker := time.NewTicker(time.Duration(10 * time.Second))
+	defer ipTicker.Stop()
+	go func() {
+		for {
+			select {
+			case <-ipTicker.C:
+				temporaryIP, err := bridge.GetIPFromExternalSource()
+				if err == nil && (temporaryIP != discoveredIP) {
+					discoveredIP = temporaryIP
+					log.Infof("Network change has been detected by different IP. New IP is: %s", discoveredIP)
+					b.AllocateNewIPToServices(discoveredIP)
+				}
+			case <-quit:
+				log.Debug("Quit message received. Exiting IP Check loop")
+				ipTicker.Stop()
+				return
+			}
+		}
+	}()
 
 	// Start a dead container pruning timer to allow refresh to work independently
 	if *refreshInterval > 0 {

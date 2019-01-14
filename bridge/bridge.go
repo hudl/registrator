@@ -62,6 +62,13 @@ func (b *Bridge) RemoveOnExit(containerId string) {
 }
 
 func (b *Bridge) Refresh() {
+	if ipLookupAddress != "" {
+		tempIP, err := GetIPFromExternalSource()
+		if err == nil && (tempIP != b.config.HostIp) {
+			b.config.HostIp = tempIP
+			log.Infof("Refresh detected IP difference. IP Changed to: %s", tempIP)
+		}
+	}
 	for containerId, services := range b.getServicesCopy() {
 		for _, service := range services {
 			err := b.registry.Refresh(service)
@@ -104,8 +111,14 @@ func (b *Bridge) getServicesCopy() map[string][]*Service {
 }
 
 func (b *Bridge) Sync(quiet bool) {
-
 	// Take this to avoid having to use a mutex
+	if ipLookupAddress != "" {
+		tempIP, err := GetIPFromExternalSource()
+		if err == nil && (tempIP != b.config.HostIp) {
+			b.config.HostIp = tempIP
+			log.Infof("Sync detected IP difference. IP Changed to: %s", tempIP)
+		}
+	}
 	servicesSnapshot := b.getServicesCopy()
 
 	containers, err := b.docker.ListContainers(dockerapi.ListContainersOptions{})
@@ -282,10 +295,37 @@ func (b *Bridge) add(containerId string, quiet bool) {
 	}
 }
 
+func (b *Bridge) AllocateNewIPToServices(ip string) {
+	services, err := b.registry.Services()
+	if err != nil {
+		log.Errorf("Failed to get Services when allocating new IP", err)
+		return
+	}
+	for _, s := range services {
+		if s.IP != ip {
+			log.Info("Service has IP difference, reallocating: ", s.Name)
+		} else {
+			log.Info("Service already on correct IP: ", s.Name)
+			continue
+		}
+		err := b.registry.Deregister(s)
+		if err != nil {
+			log.Error("Deregister during new IP Allocation failed:", s, err)
+			continue
+		}
+		s.IP = ip
+
+		err = b.registry.Register(s)
+		if err != nil {
+			log.Error("Register during new IP Allocation failed:", s, err)
+			continue
+		}
+	}
+}
+
 func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	container := port.container
 	defaultName := strings.Split(path.Base(container.Config.Image), ":")[0]
-
 	// not sure about this logic. kind of want to remove it.
 	hostname := Hostname
 	if hostname == "" {
