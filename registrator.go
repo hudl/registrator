@@ -114,7 +114,6 @@ func main() {
 		}
 		if !ipRegEx.MatchString(discoveredIP) {
 			log.Error("Invalid IP address from ipLookupSource '%s', please use a valid address.\n", discoveredIP)
-			os.Exit(2)
 		}
 	}
 
@@ -190,11 +189,11 @@ func main() {
 						log.Infof("Network change has been detected by different IP. New IP is: %s", discoveredIP)
 						if !ipRegEx.MatchString(discoveredIP) {
 							fmt.Fprintf(os.Stderr, "Invalid IP when polling ipLookupSource '%s', please use a valid address.\n", discoveredIP)
-							os.Exit(2)
+						} else {
+							go func(ip string, bridgeInstance *bridge.Bridge) {
+								b.AllocateNewIPToServices(ip)
+							}(discoveredIP, b)
 						}
-						go func(ip string, bridgeInstance *bridge.Bridge) {
-							b.AllocateNewIPToServices(ip)
-						}(discoveredIP, b)
 					}
 				case <-quit:
 					log.Debug("Quit message received. Exiting IP Check loop")
