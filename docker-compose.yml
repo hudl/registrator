@@ -14,7 +14,7 @@ services:
     volumes:
       - /var/run/docker.sock:/tmp/docker.sock
     # Additional Options: -resync 30
-    command: "-ttl 30 -ttl-refresh 15 -ip 127.0.0.1 -require-label eureka://eureka:8080/eureka/v2"
+    command: "-ttl 30 -ttl-refresh 15 -ip-lookup-source http://ipify.app.thorhudl.com/ -require-label eureka://eureka:8080/eureka/v2"
     build:
       context: .
       dockerfile: Dockerfile.dev
