@@ -154,3 +154,120 @@ func servicePort(container *dockerapi.Container, port dockerapi.Port, published 
 		container:         container,
 	}
 }
+
+// Used to sync all services
+func serviceSync(b *Bridge, quiet bool, newIP string) {
+	// Take this to avoid having to use a mutex
+	servicesSnapshot := b.getServicesCopy()
+
+	containers, err := b.docker.ListContainers(dockerapi.ListContainersOptions{})
+	if err != nil && quiet {
+		log.Error("error listing containers, skipping sync")
+		return
+	} else if err != nil && !quiet {
+		log.Fatal(err)
+	}
+
+	log.Debugf("Syncing services on %d containers", len(containers))
+
+	// NOTE: This assumes reregistering will do the right thing, i.e. nothing..
+	for _, listing := range containers {
+		services := servicesSnapshot[listing.ID]
+		if services == nil {
+			go b.add(listing.ID, quiet)
+		} else {
+			for _, service := range services {
+				//---
+				log.Debugf("Service: %s", service)
+				if newIP != "" {
+					if service.IP != newIP {
+						log.Info("Service has IP difference, reallocating: ", service.Name)
+					} else {
+						log.Info("Service already on correct IP: ", service.Name)
+						continue
+					}
+					err := b.registry.Deregister(service)
+					if err != nil {
+						log.Error("Deregister during new IP Allocation failed:", service, err)
+						continue
+					}
+					service.IP = newIP
+
+					err = b.registry.Register(service)
+					if err != nil {
+						log.Error("Register during new IP Allocation failed:", service, err)
+						continue
+					}
+				}
+				//---
+				err := b.registry.Register(service)
+				if err != nil {
+					log.Debug("sync register failed:", service, err)
+				}
+			}
+		}
+	}
+
+	// Clean up services that were registered previously, but aren't
+	// acknowledged within registrator
+	if b.config.Cleanup {
+		// Remove services if its corresponding container is not running
+		log.Debug("Listing non-exited containers")
+		filters := map[string][]string{"status": {"created", "restarting", "running", "paused"}}
+		nonExitedContainers, err := b.docker.ListContainers(dockerapi.ListContainersOptions{Filters: filters})
+		if err != nil {
+			log.Debug("error listing nonExitedContainers, skipping sync", err)
+			return
+		}
+		for listingId, _ := range servicesSnapshot {
+			found := false
+			for _, container := range nonExitedContainers {
+				if listingId == container.ID {
+					found = true
+					break
+				}
+			}
+			// This is a container that does not exist
+			if !found {
+				log.Debugf("stale: Removing service %s because it does not exist", listingId)
+				go b.RemoveOnExit(listingId)
+			}
+		}
+
+		log.Debug("Cleaning up dangling services")
+		extServices, err := b.registry.Services()
+		if err != nil {
+			log.Error("cleanup failed:", err)
+			return
+		}
+
+	Outer:
+		for _, extService := range extServices {
+			matches := serviceIDPattern.FindStringSubmatch(extService.ID)
+			if len(matches) != 3 {
+				// There's no way this was registered by us, so leave it
+				continue
+			}
+			serviceHostname := matches[1]
+			if serviceHostname != Hostname {
+				// ignore because registered on a different host
+				continue
+			}
+			serviceContainerName := matches[2]
+			for _, listing := range servicesSnapshot {
+				for _, service := range listing {
+					if service.Name == extService.Name && serviceContainerName == service.Origin.container.Name[1:] {
+						continue Outer
+					}
+				}
+			}
+			log.Debug("dangling:", extService.ID)
+			err := b.registry.Deregister(extService)
+			if err != nil {
+				log.Error("deregister failed:", extService.ID, err)
+				continue
+			}
+			log.Infof("During cleanup dangling %s removed", extService.ID)
+		}
+	}
+}

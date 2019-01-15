@@ -173,26 +173,29 @@ func main() {
 
 	b.Sync(false)
 
-	// Start a IP check ticker
-	ipTicker := time.NewTicker(time.Duration(10 * time.Second))
-	defer ipTicker.Stop()
-	go func() {
-		for {
-			select {
-			case <-ipTicker.C:
-				temporaryIP, err := bridge.GetIPFromExternalSource()
-				if err == nil && (temporaryIP != discoveredIP) {
-					discoveredIP = temporaryIP
-					log.Infof("Network change has been detected by different IP. New IP is: %s", discoveredIP)
-					b.AllocateNewIPToServices(discoveredIP)
+	// Start a IP check ticker only if an external source was provided
+	if *ipLookupSource != "" {
+		ipTicker := time.NewTicker(time.Duration(10 * time.Second))
+		go func() {
+			for {
+				select {
+				case <-ipTicker.C:
+					temporaryIP, err := bridge.GetIPFromExternalSource()
+					if err == nil && (temporaryIP != discoveredIP) {
+						discoveredIP = temporaryIP
+						log.Infof("Network change has been detected by different IP. New IP is: %s", discoveredIP)
+						go func(ip string, bridgeInstance *bridge.Bridge) {
+							b.AllocateNewIPToServices(ip)
+						}(discoveredIP, b)
+					}
+				case <-quit:
+					log.Debug("Quit message received. Exiting IP Check loop")
+					ipTicker.Stop()
+					return
 				}
-			case <-quit:
-				log.Debug("Quit message received. Exiting IP Check loop")
-				ipTicker.Stop()
-				return
 			}
-		}
-	}()
+		}()
+	}
 
 	// Start a dead container pruning timer to allow refresh to work independently
 	if *refreshInterval > 0 {
