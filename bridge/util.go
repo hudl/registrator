@@ -39,7 +39,7 @@ func GetIPFromExternalSource() (string, error) {
 		log.Error("Failed to read body of lookup from external source", err)
 		return "", err
 	}
-	return string(ip[:]), nil
+	return string(ip), nil
 }
 
 // Golang regexp module does not support /(?!\\),/ syntax for spliting by not escaped comma

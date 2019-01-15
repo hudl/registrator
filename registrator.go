@@ -112,6 +112,10 @@ func main() {
 		if err == nil {
 			log.Infof("ipLookupSource provided. Deferring to external source for IP address. Current IP is: %s", discoveredIP)
 		}
+		if !ipRegEx.MatchString(discoveredIP) {
+			log.Error("Invalid IP address from ipLookupSource '%s', please use a valid address.\n", discoveredIP)
+			os.Exit(2)
+		}
 	}
 
 	if (*refreshTtl == 0 && *refreshInterval > 0) || (*refreshTtl > 0 && *refreshInterval == 0) {
@@ -184,6 +188,10 @@ func main() {
 					if err == nil && (temporaryIP != discoveredIP) {
 						discoveredIP = temporaryIP
 						log.Infof("Network change has been detected by different IP. New IP is: %s", discoveredIP)
+						if !ipRegEx.MatchString(discoveredIP) {
+							fmt.Fprintf(os.Stderr, "Invalid IP when polling ipLookupSource '%s', please use a valid address.\n", discoveredIP)
+							os.Exit(2)
+						}
 						go func(ip string, bridgeInstance *bridge.Bridge) {
 							b.AllocateNewIPToServices(ip)
 						}(discoveredIP, b)
