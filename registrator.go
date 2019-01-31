@@ -139,9 +139,10 @@ func main() {
 		assert(errors.New("-deregister must be \"always\" or \"on-success\""))
 	}
 	selectedIP := *hostIp
-	if selectedIP != "" && discoveredIP != "" {
+	if discoveredIP != "" {
 		selectedIP = discoveredIP
 	}
+
 	log.Info("Creating Bridge")
 	b, err := bridge.New(docker, flag.Arg(0), bridge.Config{
 		HostIp:          selectedIP,

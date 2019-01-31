@@ -158,7 +158,8 @@ func servicePort(container *dockerapi.Container, port dockerapi.Port, published 
 // Used to sync all services
 func serviceSync(b *Bridge, quiet bool, newIP string) {
 	// Take this to avoid having to use a mutex
-	servicesSnapshot := b.getServicesCopy()
+	b.Lock()
+	defer b.Unlock()
 
 	containers, err := b.docker.ListContainers(dockerapi.ListContainersOptions{})
 	if err != nil && quiet {
@@ -176,7 +177,7 @@ func serviceSync(b *Bridge, quiet bool, newIP string) {
 	}
 	// NOTE: This assumes reregistering will do the right thing, i.e. nothing..
 	for _, listing := range containers {
-		services := servicesSnapshot[listing.ID]
+		services := b.services[listing.ID]
 		if services == nil {
 			go b.add(listing.ID, quiet)
 		} else {
@@ -223,7 +224,7 @@ func serviceSync(b *Bridge, quiet bool, newIP string) {
 			log.Debug("error listing nonExitedContainers, skipping sync", err)
 			return
 		}
-		for listingId, _ := range servicesSnapshot {
+		for listingId, _ := range b.services {
 			found := false
 			for _, container := range nonExitedContainers {
 				if listingId == container.ID {
@@ -258,7 +259,7 @@ func serviceSync(b *Bridge, quiet bool, newIP string) {
 				continue
 			}
 			serviceContainerName := matches[2]
-			for _, listing := range servicesSnapshot {
+			for _, listing := range b.services {
 				for _, service := range listing {
 					if service.Name == extService.Name && serviceContainerName == service.Origin.container.Name[1:] {
 						continue Outer
