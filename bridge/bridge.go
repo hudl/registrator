@@ -216,6 +216,7 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 		}
 	}
 
+	log.Infof("Creation of new service. Config HostIp is %s", b.config.HostIp)
 	if b.config.HostIp != "" {
 		port.HostIP = b.config.HostIp
 	}
@@ -243,6 +244,7 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	}
 	var convertedPort int
 
+	log.Infof("New Service has config: Internal=%s", b.config.Internal)
 	if b.config.Internal == true {
 		service.IP = port.ExposedIP
 		p, err := strconv.Atoi(port.ExposedPort)
