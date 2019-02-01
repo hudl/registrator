@@ -179,7 +179,7 @@ func main() {
 	events := make(chan *dockerapi.APIEvents)
 	assert(docker.AddEventListener(events))
 
-	b.Sync(false)
+	// b.Sync(false)
 
 	// Start a IP check ticker only if an external source was provided
 	if *ipLookupSource != "" {
@@ -188,18 +188,7 @@ func main() {
 			for {
 				select {
 				case <-ipTicker.C:
-					temporaryIP, err := bridge.GetIPFromExternalSource()
-					if err == nil && (temporaryIP != discoveredIP) {
-						discoveredIP = temporaryIP
-						log.Infof("Network change has been detected by different IP. New IP is: %s", discoveredIP)
-						if !ipRegEx.MatchString(discoveredIP) {
-							fmt.Fprintf(os.Stderr, "Invalid IP when polling ipLookupSource '%s', please use a valid address.\n", discoveredIP)
-						} else {
-							go func(ip string, bridgeInstance *bridge.Bridge) {
-								b.AllocateNewIPToServices(ip)
-							}(discoveredIP, b)
-						}
-					}
+					resyncProcess(b, *ipLookupSource)
 				case <-quit:
 					log.Debug("Quit message received. Exiting IP Check loop")
 					ipTicker.Stop()
@@ -250,7 +239,7 @@ func main() {
 			for {
 				select {
 				case <-resyncTicker.C:
-					b.Sync(true)
+					resyncProcess(b, *ipLookupSource)
 				case <-quit:
 					log.Debug("Quit message received. Exiting Resync loop")
 					resyncTicker.Stop()
@@ -270,5 +259,24 @@ func main() {
 			log.Debugf("Docker Event Received: Die %s", msg.ID)
 			go b.RemoveOnExit(msg.ID)
 		}
+	}
+}
+
+func resyncProcess(b *bridge.Bridge, ipLookupSource string) {
+	if ipLookupSource != "" {
+		temporaryIP, err := bridge.GetIPFromExternalSource()
+		if err == nil && (temporaryIP != discoveredIP) {
+			discoveredIP = temporaryIP
+			log.Infof("Network change has been detected by different IP. New IP is: %s", discoveredIP)
+			if !ipRegEx.MatchString(discoveredIP) {
+				fmt.Fprintf(os.Stderr, "Invalid IP when polling ipLookupSource '%s', please use a valid address.\n", discoveredIP)
+			} else {
+				go func(ip string, bridgeInstance *bridge.Bridge) {
+					b.AllocateNewIPToServices(ip)
+				}(discoveredIP, b)
+			}
+		}
+	} else {
+		b.Sync(true)
 	}
 }
