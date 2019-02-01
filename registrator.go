@@ -180,7 +180,7 @@ func main() {
 	events := make(chan *dockerapi.APIEvents)
 	assert(docker.AddEventListener(events))
 
-	// b.Sync(false)
+	b.Sync(false)
 
 	// Start a IP check ticker only if an external source was provided
 	if *ipLookupSource != "" {

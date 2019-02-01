@@ -3,7 +3,7 @@ package bridge
 
 import (
 	"net/url"
-
+	"sync"
 	dockerapi "github.com/fsouza/go-dockerclient"
 )
 
@@ -32,6 +32,7 @@ type Config struct {
 }
 
 type Service struct {
+	sync.Mutex
 	ID    string
 	Name  string
 	Port  int

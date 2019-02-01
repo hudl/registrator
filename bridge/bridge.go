@@ -184,7 +184,6 @@ func (b *Bridge) add(containerId string, quiet bool, newIP string) {
 
 	isGroup := len(servicePorts) > 1
 	for _, port := range servicePorts {
-		log.Infof("Creating new service with IP: %s", port.HostIP)
 		service := b.newService(port, isGroup)
 		if service == nil {
 			if !quiet {
