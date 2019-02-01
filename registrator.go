@@ -106,9 +106,10 @@ func main() {
 		log.Info("SERVICE_REGISTER label is required to register containers.")
 	}
 
+	var err error
 	if *ipLookupSource != "" {
 		bridge.SetExternalIPSource(*ipLookupSource)
-		discoveredIP, err := bridge.GetIPFromExternalSource()
+		discoveredIP, err = bridge.GetIPFromExternalSource()
 		if err == nil {
 			log.Infof("ipLookupSource provided. Deferring to external source for IP address. Current IP is: %s", discoveredIP)
 		}

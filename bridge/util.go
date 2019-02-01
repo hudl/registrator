@@ -172,14 +172,15 @@ func serviceSync(b *Bridge, quiet bool, newIP string) {
 	log.Debugf("Syncing services on %d containers", len(containers))
 	if newIP != "" {
 		if b.config.HostIp != newIP {
-			log.Info("Bridge Config HostIP is different to new IP, adjusting")
+			log.Infof("Bridge Config HostIP is different to new IP, adjusting: %s", newIP)
 		}
 	}
 	// NOTE: This assumes reregistering will do the right thing, i.e. nothing..
 	for _, listing := range containers {
 		services := b.services[listing.ID]
 		if services == nil {
-			go b.add(listing.ID, quiet)
+			log.Infof("Services are nil, building new services against listing: %s", listing.ID)
+			go b.add(listing.ID, quiet, newIP)
 		} else {
 			for _, service := range services {
 				//---
