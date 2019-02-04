@@ -215,7 +215,6 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 		}
 	}
 
-	log.Infof("Creation of new service. Config HostIp is %s", b.config.HostIp)
 	if b.config.HostIp != "" {
 		port.HostIP = b.config.HostIp
 	}

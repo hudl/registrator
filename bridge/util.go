@@ -177,7 +177,7 @@ func serviceSync(b *Bridge, quiet bool, newIP string) {
 
 		services := b.services[listing.ID]
 		if services == nil {
-			log.Infof("Services are nil, building new services against listing: %s", listing.ID)
+			log.Debugf("Services are nil, building new services against listing: %s", listing.ID)
 			go b.add(listing.ID, quiet, newIP)
 		} else {
 			for _, service := range services {
