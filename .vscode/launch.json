@@ -8,6 +8,7 @@
             "name": "Launch",
             "type": "go",
             "request": "launch",
+            "buildFlags": "-race",
             "mode": "auto",
             "program": "${workspaceFolder}",
             "env": {
