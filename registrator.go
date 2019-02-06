@@ -189,7 +189,9 @@ func main() {
 			for {
 				select {
 				case <-ipTicker.C:
+					b.Lock()
 					resyncProcess(b, *ipLookupSource)
+					b.Unlock()
 				case <-quit:
 					log.Debug("Quit message received. Exiting IP Check loop")
 					ipTicker.Stop()
@@ -240,7 +242,9 @@ func main() {
 			for {
 				select {
 				case <-resyncTicker.C:
+					b.Lock()
 					resyncProcess(b, *ipLookupSource)
+					b.Unlock()
 				case <-quit:
 					log.Debug("Quit message received. Exiting Resync loop")
 					resyncTicker.Stop()
