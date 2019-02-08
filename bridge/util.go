@@ -157,6 +157,8 @@ func servicePort(container *dockerapi.Container, port dockerapi.Port, published 
 
 // Used to sync all services
 func serviceSync(b *Bridge, quiet bool, newIP string) {
+	// Take this to avoid having to use a mutex
+	servicesSnapshot := b.getServicesCopy()
 
 	containers, err := b.docker.ListContainers(dockerapi.ListContainersOptions{})
 	if err != nil && quiet {
@@ -167,47 +169,33 @@ func serviceSync(b *Bridge, quiet bool, newIP string) {
 	}
 
 	log.Debugf("Syncing services on %d containers", len(containers))
-	if newIP != "" {
-		if b.config.HostIp != newIP {
-			log.Infof("Bridge Config HostIP is different to new IP, adjusting: %s", newIP)
-		}
-	}
+
 	// NOTE: This assumes reregistering will do the right thing, i.e. nothing..
 	for _, listing := range containers {
-
-		services := b.services[listing.ID]
+		services := servicesSnapshot[listing.ID]
 		if services == nil {
-			log.Debugf("Services are nil, building new services against listing: %s", listing.ID)
-			go b.add(listing.ID, quiet, newIP)
+			go b.add(listing.ID, quiet)
 		} else {
 			for _, service := range services {
 				//---
-				service.RLock()
 				log.Debugf("Service: %s", service)
 				if newIP != "" {
 					if service.IP != newIP {
 						log.Info("Service has IP difference, reallocating: ", service.Name)
 					} else {
 						log.Info("Service already on correct IP: ", service.Name)
-						service.RUnlock()
 						continue
 					}
 					err := b.registry.Deregister(service)
 					if err != nil {
 						log.Error("Deregister during new IP Allocation failed:", service, err)
-						service.RUnlock()
 						continue
 					}
-					service.RUnlock()
-
-					service.Lock()
 					service.IP = newIP
-					service.Origin.HostIP = newIP
-					err = b.registry.Register(service)
 
+					err = b.registry.Register(service)
 					if err != nil {
 						log.Error("Register during new IP Allocation failed:", service, err)
-						service.Unlock()
 						continue
 					}
 				}
@@ -216,7 +204,6 @@ func serviceSync(b *Bridge, quiet bool, newIP string) {
 				if err != nil {
 					log.Debug("sync register failed:", service, err)
 				}
-				service.Unlock()
 			}
 		}
 	}
@@ -232,7 +219,7 @@ func serviceSync(b *Bridge, quiet bool, newIP string) {
 			log.Debug("error listing nonExitedContainers, skipping sync", err)
 			return
 		}
-		for listingId, _ := range b.services {
+		for listingId, _ := range servicesSnapshot {
 			found := false
 			for _, container := range nonExitedContainers {
 				if listingId == container.ID {
@@ -267,14 +254,11 @@ func serviceSync(b *Bridge, quiet bool, newIP string) {
 				continue
 			}
 			serviceContainerName := matches[2]
-			for _, listing := range b.services {
+			for _, listing := range servicesSnapshot {
 				for _, service := range listing {
-					service.RLock()
 					if service.Name == extService.Name && serviceContainerName == service.Origin.container.Name[1:] {
-						service.RUnlock()
 						continue Outer
 					}
-					service.RUnlock()
 				}
 			}
 			log.Debug("dangling:", extService.ID)
