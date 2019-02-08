@@ -182,9 +182,9 @@ func serviceSync(b *Bridge, quiet bool, newIP string) {
 		} else {
 			for _, service := range services {
 				//---
-				service.RLock()
 				log.Debugf("Service: %s", service)
 				if newIP != "" {
+					service.RLock()
 					if service.IP != newIP {
 						log.Info("Service has IP difference, reallocating: ", service.Name)
 					} else {
@@ -204,14 +204,14 @@ func serviceSync(b *Bridge, quiet bool, newIP string) {
 					service.IP = newIP
 					service.Origin.HostIP = newIP
 					err = b.registry.Register(service)
+					service.Unlock()
 
 					if err != nil {
 						log.Error("Register during new IP Allocation failed:", service, err)
-						service.Unlock()
 						continue
 					}
 				}
-				//---
+				service.Lock()
 				err := b.registry.Register(service)
 				if err != nil {
 					log.Debug("sync register failed:", service, err)
