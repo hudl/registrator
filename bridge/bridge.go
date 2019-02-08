@@ -50,7 +50,7 @@ func (b *Bridge) Ping() error {
 }
 
 func (b *Bridge) Add(containerId string) {
-	b.add(containerId, false, "")
+	b.add(containerId, false)
 }
 
 func (b *Bridge) Remove(containerId string) {
@@ -132,7 +132,7 @@ func (b *Bridge) appendService(containerId string, service *Service) {
 	log.Debug("added:", containerId[:12], service.ID)
 }
 
-func (b *Bridge) add(containerId string, quiet bool, newIP string) {
+func (b *Bridge) add(containerId string, quiet bool) {
 	b.deleteDeadContainer(containerId)
 
 	b.Lock()
@@ -154,11 +154,7 @@ func (b *Bridge) add(containerId string, quiet bool, newIP string) {
 	// Extract configured host port mappings, relevant when using --net=host
 	for port, _ := range container.Config.ExposedPorts {
 		published := []dockerapi.PortBinding{{"0.0.0.0", port.Port()}}
-		serviceP := servicePort(container, port, published)
-		if newIP != "" {
-			serviceP.HostIP = newIP
-		}
-		ports[string(port)] = serviceP
+		ports[string(port)] = servicePort(container, port, published)
 	}
 
 	// Extract runtime port mappings, relevant when using --net=bridge
@@ -242,7 +238,6 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	}
 	var convertedPort int
 
-	log.Infof("New Service has config: Internal=%s", b.config.Internal)
 	if b.config.Internal == true {
 		service.IP = port.ExposedIP
 		p, err := strconv.Atoi(port.ExposedPort)
