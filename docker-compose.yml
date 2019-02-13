@@ -3,6 +3,10 @@ version: '3'
 services:
   eureka:
     image: netflixoss/eureka:1.1.147
+    ports:
+      - '8080:8080'
+    expose:
+      - '8080'
   registrator:
     depends_on:
       - eureka
@@ -20,6 +24,8 @@ services:
       dockerfile: Dockerfile.dev
   test_container:
     image: busybox
+    expose:
+      - '8888'
     depends_on:
       - registrator
     environment:
