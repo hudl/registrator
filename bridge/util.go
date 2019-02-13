@@ -181,8 +181,6 @@ func serviceSync(b *Bridge, quiet bool, newIP string) {
 			go b.add(listing.ID, quiet, newIP)
 		} else {
 			for _, service := range services {
-				//---
-				service.RLock()
 				log.Debugf("Service: %s", service)
 				if newIP != "" {
 					service.RLock()
@@ -209,7 +207,6 @@ func serviceSync(b *Bridge, quiet bool, newIP string) {
 
 					if err != nil {
 						log.Error("Register during new IP Allocation failed:", service, err)
-						service.Unlock()
 						continue
 					}
 				}
