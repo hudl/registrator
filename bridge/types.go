@@ -34,14 +34,14 @@ type Config struct {
 
 type Service struct {
 	sync.RWMutex
-	ID    string
-	Name  string
-	Port  int
-	IP    string
-	Tags  []string
-	Attrs map[string]string
-	TTL   int
-
+	ID    			string
+	Name  			string
+	Port  			int
+	IP    			string
+	UseExposedPorts	bool
+	Tags  			[]string
+	Attrs 			map[string]string
+	TTL   			int
 	Origin ServicePort
 }
 
