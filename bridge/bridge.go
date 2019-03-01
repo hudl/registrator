@@ -172,9 +172,14 @@ func (b *Bridge) add(containerId string, quiet bool, newIP string) {
 	}
 
 	servicePorts := make(map[string]ServicePort)
+
 	for key, port := range ports {
-		// TODO: Put a check for the env var that sets up service.UseExposedPorts here and add the service ports if true
-		if b.config.Internal != true && port.HostPort == "" {
+		// Added a check for the env var that sets up service.UseExposedPorts here and add the service ports if true
+		log.Infof("looking up metadata for: %s", container.ID)
+		useExposedPorts := lookupMetaData(container.Config, "SERVICE_USE_EXPOSED_PORTS")
+		log.Infof("useExposedPorts: %s", useExposedPorts)
+
+		if !b.config.Internal && useExposedPorts != "" && port.HostPort == "" {
 			if !quiet {
 				log.Debug("ignored:", container.ID[:12], "port", port.ExposedPort, "not published on host")
 			}
