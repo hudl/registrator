@@ -179,7 +179,7 @@ func (b *Bridge) add(containerId string, quiet bool, newIP string) {
 		useExposedPorts := lookupMetaData(container.Config, "SERVICE_USE_EXPOSED_PORTS")
 		log.Infof("useExposedPorts: %s", useExposedPorts)
 
-		if !b.config.Internal && useExposedPorts != "" && port.HostPort == "" {
+		if !b.config.Internal && useExposedPorts == "" && port.HostPort == "" {
 			if !quiet {
 				log.Debug("ignored:", container.ID[:12], "port", port.ExposedPort, "not published on host")
 			}
