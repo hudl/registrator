@@ -76,6 +76,16 @@ func combineTags(tagParts ...string) []string {
 	return tags
 }
 
+func lookupMetaData(config *dockerapi.Config, key string) string {
+	for _, v := range config.Env {
+		str := strings.SplitN(v, "=", 2)
+		if strings.EqualFold(str[0], key) {
+			return str[1]
+		}
+	}
+	return ""
+}
+
 func serviceMetaData(config *dockerapi.Config, port string) (map[string]string, map[string]bool) {
 	meta := config.Labels
 

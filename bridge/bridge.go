@@ -172,8 +172,14 @@ func (b *Bridge) add(containerId string, quiet bool, newIP string) {
 	}
 
 	servicePorts := make(map[string]ServicePort)
+
 	for key, port := range ports {
-		if b.config.Internal != true && port.HostPort == "" {
+		// Added a check for the env var that sets up service.UseExposedPorts here and add the service ports if true
+		log.Infof("looking up metadata for: %s", container.ID)
+		useExposedPorts := lookupMetaData(container.Config, "SERVICE_USE_EXPOSED_PORTS")
+		log.Infof("useExposedPorts: %s", useExposedPorts)
+
+		if !b.config.Internal && useExposedPorts == "" && port.HostPort == "" {
 			if !quiet {
 				log.Debug("ignored:", container.ID[:12], "port", port.ExposedPort, "not published on host")
 			}
@@ -222,6 +228,7 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	metadata, metadataFromPort := serviceMetaData(container.Config, port.ExposedPort)
 
 	ignore := mapDefault(metadata, "ignore", "")
+	log.Info("Checking Ignore: %s", ignore)
 	if ignore != "" {
 		return nil
 	}
@@ -237,14 +244,23 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	service.Origin = port
 	service.ID = hostname + ":" + container.Name[1:] + ":" + port.ExposedPort
 	service.Name = mapDefault(metadata, "name", defaultName)
+
+	if strings.ToLower(mapDefault(metadata, "use_exposed_ports", "false")) == "true" {
+		service.UseExposedPorts = true
+	}
+
 	if isgroup && !metadataFromPort["name"] {
 		service.Name += "-" + port.ExposedPort
 	}
 	var convertedPort int
 
-	log.Infof("New Service has config: Internal=%s", b.config.Internal)
+	log.Infof("New Service has config: Internal=%s UseExposedPorts=%s", b.config.Internal, service.UseExposedPorts)
 	if b.config.Internal == true {
 		service.IP = port.ExposedIP
+	} else {
+		service.IP = port.HostIP
+	}
+	if b.config.Internal == true || service.UseExposedPorts == true {
 		p, err := strconv.Atoi(port.ExposedPort)
 		if err != nil {
 			log.Error("Unable to parse string ExposedPort to int: %s", port.ExposedPort)
@@ -252,7 +268,6 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 			convertedPort = p
 		}
 	} else {
-		service.IP = port.HostIP
 		p, err := strconv.Atoi(port.HostPort)
 		if err != nil {
 			log.Error("Unable to parse string HostPort to int: %s", port.HostPort)
