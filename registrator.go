@@ -36,6 +36,7 @@ var retryInterval = flag.Int("retry-interval", 2000, "Interval (in millisecond) 
 var cleanup = flag.Bool("cleanup", false, "Remove dangling services")
 var requireLabel = flag.Bool("require-label", false, "Only register containers which have the SERVICE_REGISTER label, and ignore all others.")
 var ipLookupSource = flag.String("ip-lookup-source", "", "Used to configure IP lookup source. Useful when running locally")
+var ipLookupRetries = flag.Int("ip-lookup-retries", 1, "Used to set how many times it attempts to lookup the IP before exiting (default is 1)")
 
 // below IP regex was obtained from http://blog.markhatton.co.uk/2011/03/15/regular-expressions-for-ip-addresses-cidr-ranges-and-hostnames/
 var ipRegEx, _ = regexp.Compile(`^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$`)
@@ -106,13 +107,23 @@ func main() {
 		log.Info("SERVICE_REGISTER label is required to register containers.")
 	}
 
+	if *ipLookupRetries > 0 {
+		bridge.SetIPLookupRetries(*ipLookupRetries)
+		log.Infof("ipLookupRetries provided. Setting retries at %d", *ipLookupRetries)
+	} else {
+		log.Infof("ipLookupRetries needs to be set to at least 1")
+		os.Exit(2)
+	}
+
 	var err error
 	if *ipLookupSource != "" {
+		log.Infof("ipLookupSource provided: %s", *ipLookupSource)
 		bridge.SetExternalIPSource(*ipLookupSource)
-		discoveredIP, err = bridge.GetIPFromExternalSource()
-		if err == nil {
-			log.Infof("ipLookupSource provided. Deferring to external source for IP address. Current IP is: %s", discoveredIP)
+		discoveredIP, success := bridge.GetIPFromExternalSource()
+		if !success {
+			os.Exit(2)
 		}
+
 		if !ipRegEx.MatchString(discoveredIP) {
 			log.Error("Invalid IP address from ipLookupSource '%s', please use a valid address.\n", discoveredIP)
 		}
@@ -269,8 +280,11 @@ func main() {
 
 func resyncProcess(b *bridge.Bridge, ipLookupSource string) {
 	if ipLookupSource != "" {
-		temporaryIP, err := bridge.GetIPFromExternalSource()
-		if err == nil && (temporaryIP != discoveredIP) {
+		temporaryIP, success := bridge.GetIPFromExternalSource()
+		if !success {
+			os.Exit(2)
+		}
+		if temporaryIP != discoveredIP {
 			discoveredIP = temporaryIP
 			log.Infof("Network change has been detected by different IP. New IP is: %s", discoveredIP)
 			if !ipRegEx.MatchString(discoveredIP) {
