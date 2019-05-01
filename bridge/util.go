@@ -5,12 +5,18 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cenkalti/backoff"
 	dockerapi "github.com/fsouza/go-dockerclient"
 )
 
 var ipLookupAddress = ""
+var ipLookupRetries = 0
+var ipRetryInterval = 10
+var client = http.Client{
+	Timeout: time.Duration(60 * time.Second),
+}
 
 func retry(fn func() error) error {
 	return backoff.Retry(fn, backoff.NewExponentialBackOff())
@@ -28,18 +34,50 @@ func SetExternalIPSource(lookupAddress string) {
 	ipLookupAddress = lookupAddress
 }
 
-func GetIPFromExternalSource() (string, error) {
-	res, err := http.Get(ipLookupAddress)
-	if err != nil {
-		log.Errorf("Failed to lookup IP Address from external source: %s", ipLookupAddress, err)
-		return "", err
+func SetIPLookupRetries(number int) {
+	ipLookupRetries = number
+}
+
+func lookupIp(address string) (*http.Response, error) {
+	return client.Get(address)
+}
+
+func GetIPFromExternalSource() (string, bool) {
+	_ip := []byte{}
+	attempt := 1
+	for attempt <= ipLookupRetries {
+		res, err := lookupIp(ipLookupAddress)
+		if err != nil {
+			log.Errorf("Failed to lookup IP Address from external source: %s. Waiting before attempting retry...", ipLookupAddress, err)
+			select {
+			case <-time.After(time.Duration(ipRetryInterval*attempt) * time.Second):
+				attempt++
+				continue
+			}
+		}
+
+		ip, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			log.Error("Failed to read body of lookup from external source. Attempting retry", err)
+
+			select {
+			case <-time.After(time.Duration(ipRetryInterval*attempt) * time.Second):
+				attempt++
+				continue
+			}
+		}
+
+		_ip = ip
+		break
 	}
-	ip, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		log.Error("Failed to read body of lookup from external source", err)
-		return "", err
+
+	if len(_ip) == 0 {
+		log.Error("All retries used when getting ip from external source.")
+		return "", false
 	}
-	return string(ip), nil
+	ipValue := string(_ip)
+	log.Infof("Success, returning ip: %s", ipValue)
+	return ipValue, true
 }
 
 // Golang regexp module does not support /(?!\\),/ syntax for spliting by not escaped comma
