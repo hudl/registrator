@@ -117,12 +117,13 @@ func main() {
 
 	var err error
 	if *ipLookupSource != "" {
+		log.Infof("ipLookupSource provided: %s", *ipLookupSource)
 		bridge.SetExternalIPSource(*ipLookupSource)
 		discoveredIP, success := bridge.GetIPFromExternalSource()
 		if !success {
 			os.Exit(2)
 		}
-		log.Infof("ipLookupSource provided. Deferring to external source for IP address. Current IP is: %s", discoveredIP)
+
 		if !ipRegEx.MatchString(discoveredIP) {
 			log.Error("Invalid IP address from ipLookupSource '%s', please use a valid address.\n", discoveredIP)
 		}

@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
@@ -47,30 +48,29 @@ func GetIPFromExternalSource() (string, bool) {
 	attempt := 1
 	for attempt <= ipLookupRetries {
 		res, err := lookupIp(ipLookupAddress)
+		var fail error
 		if err != nil {
-			log.Errorf("Failed to lookup IP Address from external source: %s. Waiting before attempting retry...", ipLookupAddress, err)
+			fail = fmt.Errorf("Failed to lookup IP Address from external source: %s. Waiting before attempting retry...", ipLookupAddress, err)
+		} else {
+			ip, err := ioutil.ReadAll(res.Body)
+			if err != nil {
+				fail = fmt.Errorf("Failed to read body of lookup from external source. Attempting retry", err)
+			} else {
+				log.Infof("Deferring to external source for IP address. Current IP is: %s", ip)
+				_ip = ip
+				break
+			}
+		}
+
+		if fail != nil {
+			log.Error(fail)
 			select {
 			case <-time.After(time.Duration(ipRetryInterval*attempt) * time.Second):
 				attempt++
 				continue
 			}
 		}
-
-		ip, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			log.Error("Failed to read body of lookup from external source. Attempting retry", err)
-
-			select {
-			case <-time.After(time.Duration(ipRetryInterval*attempt) * time.Second):
-				attempt++
-				continue
-			}
-		}
-
-		_ip = ip
-		break
 	}
-
 	if len(_ip) == 0 {
 		log.Error("All retries used when getting ip from external source.")
 		return "", false
