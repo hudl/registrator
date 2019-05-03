@@ -284,16 +284,14 @@ func resyncProcess(b *bridge.Bridge, ipLookupSource string) {
 		if !success {
 			os.Exit(2)
 		}
-		if temporaryIP != discoveredIP {
-			discoveredIP = temporaryIP
-			log.Infof("Network change has been detected by different IP. New IP is: %s", discoveredIP)
-			if !ipRegEx.MatchString(discoveredIP) {
-				fmt.Fprintf(os.Stderr, "Invalid IP when polling ipLookupSource '%s', please use a valid address.\n", discoveredIP)
-			} else {
-				go func(ip string, bridgeInstance *bridge.Bridge) {
-					b.AllocateNewIPToServices(ip)
-				}(discoveredIP, b)
-			}
+		discoveredIP = temporaryIP
+		log.Infof("Network change has been detected by different IP. New IP is: %s", discoveredIP)
+		if !ipRegEx.MatchString(discoveredIP) {
+			fmt.Fprintf(os.Stderr, "Invalid IP when polling ipLookupSource '%s', please use a valid address.\n", discoveredIP)
+		} else {
+			go func(ip string, bridgeInstance *bridge.Bridge) {
+				b.AllocateNewIPToServices(ip)
+			}(discoveredIP, b)
 		}
 	} else {
 		b.Sync(true)
