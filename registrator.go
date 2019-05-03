@@ -270,7 +270,7 @@ func main() {
 		switch msg.Status {
 		case "start":
 			log.Debugf("Docker Event Received: Start %s", msg.ID)
-			go b.Add(msg.ID)
+			go b.Add(msg.ID, discoveredIP)
 		case "die":
 			log.Debugf("Docker Event Received: Die %s", msg.ID)
 			go b.RemoveOnExit(msg.ID)
@@ -285,7 +285,7 @@ func resyncProcess(b *bridge.Bridge, ipLookupSource string) {
 			os.Exit(2)
 		}
 		discoveredIP = temporaryIP
-		log.Infof("Network change has been detected by different IP. New IP is: %s", discoveredIP)
+		log.Infof("Resyncing process. IP to use is: %s", discoveredIP)
 		if !ipRegEx.MatchString(discoveredIP) {
 			fmt.Fprintf(os.Stderr, "Invalid IP when polling ipLookupSource '%s', please use a valid address.\n", discoveredIP)
 		} else {
