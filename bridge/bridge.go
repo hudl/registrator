@@ -49,8 +49,8 @@ func (b *Bridge) Ping() error {
 	return b.registry.Ping()
 }
 
-func (b *Bridge) Add(containerId string) {
-	b.add(containerId, false, "")
+func (b *Bridge) Add(containerId, ipToUse string) {
+	b.add(containerId, false, ipToUse)
 }
 
 func (b *Bridge) Remove(containerId string) {
@@ -133,6 +133,7 @@ func (b *Bridge) appendService(containerId string, service *Service) {
 }
 
 func (b *Bridge) add(containerId string, quiet bool, newIP string) {
+	log.Infof("Bridge.Add called with IP: %s", newIP)
 	b.deleteDeadContainer(containerId)
 
 	b.Lock()

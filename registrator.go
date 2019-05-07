@@ -119,13 +119,14 @@ func main() {
 	if *ipLookupSource != "" {
 		log.Infof("ipLookupSource provided: %s", *ipLookupSource)
 		bridge.SetExternalIPSource(*ipLookupSource)
-		discoveredIP, success := bridge.GetIPFromExternalSource()
+		externalIPSource, success := bridge.GetIPFromExternalSource()
 		if !success {
 			os.Exit(2)
 		}
-
-		if !ipRegEx.MatchString(discoveredIP) {
-			log.Error("Invalid IP address from ipLookupSource '%s', please use a valid address.\n", discoveredIP)
+		if !ipRegEx.MatchString(externalIPSource) {
+			log.Error("Invalid IP address from ipLookupSource '%s', please use a valid address.\n", externalIPSource)
+		} else {
+			discoveredIP = externalIPSource
 		}
 	}
 
@@ -270,7 +271,7 @@ func main() {
 		switch msg.Status {
 		case "start":
 			log.Debugf("Docker Event Received: Start %s", msg.ID)
-			go b.Add(msg.ID)
+			go b.Add(msg.ID, discoveredIP)
 		case "die":
 			log.Debugf("Docker Event Received: Die %s", msg.ID)
 			go b.RemoveOnExit(msg.ID)
@@ -284,16 +285,14 @@ func resyncProcess(b *bridge.Bridge, ipLookupSource string) {
 		if !success {
 			os.Exit(2)
 		}
-		if temporaryIP != discoveredIP {
-			discoveredIP = temporaryIP
-			log.Infof("Network change has been detected by different IP. New IP is: %s", discoveredIP)
-			if !ipRegEx.MatchString(discoveredIP) {
-				fmt.Fprintf(os.Stderr, "Invalid IP when polling ipLookupSource '%s', please use a valid address.\n", discoveredIP)
-			} else {
-				go func(ip string, bridgeInstance *bridge.Bridge) {
-					b.AllocateNewIPToServices(ip)
-				}(discoveredIP, b)
-			}
+		discoveredIP = temporaryIP
+		log.Infof("Resyncing process. IP to use is: %s", discoveredIP)
+		if !ipRegEx.MatchString(discoveredIP) {
+			fmt.Fprintf(os.Stderr, "Invalid IP when polling ipLookupSource '%s', please use a valid address.\n", discoveredIP)
+		} else {
+			go func(ip string, bridgeInstance *bridge.Bridge) {
+				b.AllocateNewIPToServices(ip)
+			}(discoveredIP, b)
 		}
 	} else {
 		b.Sync(true)
