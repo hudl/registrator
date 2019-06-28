@@ -17,7 +17,7 @@
                 "SERVICE_EUREKA_DATACENTERINFO_AUTO_POPULATE":"false",
                 "DOCKER_HOST": "unix:///var/run/docker.sock"
             },
-            "args": ["-ttl", "30", "-ttl-refresh", "15", "-ip-lookup-source", "http://ipify.app.thorhudl.com/", "-require-label", "eureka://localhost:8080/eureka/v2"]
+            "args": ["-ttl", "30", "-ttl-refresh", "15", "-ip-lookup-source", "http://ipify.app.thorhudl.com/", "-ip-lookup-retries", "3", "-require-label", "eureka://localhost:8080/eureka/v2"]
         }
     ]
 }
