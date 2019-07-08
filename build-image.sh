@@ -121,10 +121,9 @@ if [ $BUILD_RESULT -eq 0 ] && [ $PUBLISH -eq 1 ]; then
         docker tag $REPOSITORY_AND_TAG $REPOSITORY:latest 
         docker push $REPOSITORY:latest && echo "Publish latest succeeded."
         LATEST_PUSH_RESULT=$?
-        docker rmi $REPOSITORY_AND_TAG
+        docker rmi $REPOSITORY:latest
         if [ $LATEST_PUSH_RESULT -ne 0 ]; then
             docker rmi $REPOSITORY_AND_TAG
-            docker rmi $REPOSITORY:latest
             exit $LATEST_PUSH_RESULT
         fi
     fi
