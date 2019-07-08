@@ -117,7 +117,7 @@ if [ $BUILD_RESULT -eq 0 ] && [ $PUBLISH -eq 1 ]; then
     $(aws ecr get-login --region=us-east-1 --no-include-email) 2>&1
 
     # TODO: Switch this to master!
-    if [[ "$BRANCH" == "MARVEL-2837-PublishLatest" ]]; then
+    if [[ "$BRANCH" == "master ]]; then
         echo Master branch detected. Will also publish to the latest tag.
         docker tag $REPOSITORY_AND_TAG $REPOSITORY:latest 
         docker push $REPOSITORY:latest && echo "Publish latest succeeded."
