@@ -116,8 +116,19 @@ if [ $BUILD_RESULT -eq 0 ] && [ $PUBLISH -eq 1 ]; then
     echo "Publishing ${REPOSITORY_AND_TAG}"
     $(aws ecr get-login --region=us-east-1 --no-include-email) 2>&1
 
+    # TODO: Switch this to master!
+    if [[ "$BRANCH" == "MARVEL-2837-PublishLatest" ]]; then
+        docker push $REPOSITORY_AND_TAG $REPOSITORY:latest && echo "Publish latest succeeded."
+        LATEST_PUSH_RESULT=$?
+        docker rmi $REPOSITORY_AND_TAG
+        if [ $LATEST_PUSH_RESULT -ne 0 ]; then
+            docker rmi $REPOSITORY_AND_TAG
+            exit $LATEST_PUSH_RESULT
+        fi
+    fi
+
     # Log success message for build failure condition
-    docker push $REPOSITORY_AND_TAG && echo "Publish succeeded."
+    docker push $REPOSITORY_AND_TAG && echo "Publish version succeeded."
     PUSH_RESULT=$?
 
     docker rmi $REPOSITORY_AND_TAG
