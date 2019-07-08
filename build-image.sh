@@ -118,11 +118,13 @@ if [ $BUILD_RESULT -eq 0 ] && [ $PUBLISH -eq 1 ]; then
 
     # TODO: Switch this to master!
     if [[ "$BRANCH" == "MARVEL-2837-PublishLatest" ]]; then
-        docker push $REPOSITORY_AND_TAG $REPOSITORY:latest && echo "Publish latest succeeded."
+        docker tag $REPOSITORY_AND_TAG $REPOSITORY:latest 
+        docker push $REPOSITORY:latest && echo "Publish latest succeeded."
         LATEST_PUSH_RESULT=$?
         docker rmi $REPOSITORY_AND_TAG
         if [ $LATEST_PUSH_RESULT -ne 0 ]; then
             docker rmi $REPOSITORY_AND_TAG
+            docker rmi $REPOSITORY:latest
             exit $LATEST_PUSH_RESULT
         fi
     fi
