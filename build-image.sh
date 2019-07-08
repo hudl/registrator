@@ -118,6 +118,7 @@ if [ $BUILD_RESULT -eq 0 ] && [ $PUBLISH -eq 1 ]; then
 
     # TODO: Switch this to master!
     if [[ "$BRANCH" == "MARVEL-2837-PublishLatest" ]]; then
+        echo Master branch detected. Will also publish to the latest tag.
         docker tag $REPOSITORY_AND_TAG $REPOSITORY:latest 
         docker push $REPOSITORY:latest && echo "Publish latest succeeded."
         LATEST_PUSH_RESULT=$?
