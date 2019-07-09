@@ -245,7 +245,11 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	service.Origin = port
 	service.ID = hostname + ":" + container.Name[1:] + ":" + port.ExposedPort
 	service.Name = mapDefault(metadata, "name", defaultName)
-
+	if service.Name == defaultName {
+		log.Infof("Service does not have name via metadata. Default=%s, ContainerID=%s", defaultName, container.ID)
+	} else {
+		log.Infof("Service has metadata derived name=%s, Default=%s", service.Name, defaultName)
+	}
 	if strings.ToLower(mapDefault(metadata, "use_exposed_ports", "false")) == "true" {
 		service.UseExposedPorts = true
 	}
