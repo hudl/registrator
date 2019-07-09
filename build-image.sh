@@ -116,8 +116,20 @@ if [ $BUILD_RESULT -eq 0 ] && [ $PUBLISH -eq 1 ]; then
     echo "Publishing ${REPOSITORY_AND_TAG}"
     $(aws ecr get-login --region=us-east-1 --no-include-email) 2>&1
 
+    if [[ "$BRANCH" == "master" ]]; then
+        echo Master branch detected. Will also publish to the latest tag.
+        docker tag $REPOSITORY_AND_TAG $REPOSITORY:latest 
+        docker push $REPOSITORY:latest && echo "Publish latest succeeded."
+        LATEST_PUSH_RESULT=$?
+        docker rmi $REPOSITORY:latest
+        if [ $LATEST_PUSH_RESULT -ne 0 ]; then
+            docker rmi $REPOSITORY_AND_TAG
+            exit $LATEST_PUSH_RESULT
+        fi
+    fi
+
     # Log success message for build failure condition
-    docker push $REPOSITORY_AND_TAG && echo "Publish succeeded."
+    docker push $REPOSITORY_AND_TAG && echo "Publish version succeeded."
     PUSH_RESULT=$?
 
     docker rmi $REPOSITORY_AND_TAG
