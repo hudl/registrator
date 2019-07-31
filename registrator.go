@@ -37,6 +37,7 @@ var cleanup = flag.Bool("cleanup", false, "Remove dangling services")
 var requireLabel = flag.Bool("require-label", false, "Only register containers which have the SERVICE_REGISTER label, and ignore all others.")
 var ipLookupSource = flag.String("ip-lookup-source", "", "Used to configure IP lookup source. Useful when running locally")
 var ipLookupRetries = flag.Int("ip-lookup-retries", 1, "Used to set how many times it attempts to lookup the IP before exiting (default is 1)")
+var continueOnIpLookupFailure = flag.Bool("continue-on-ip-lookup-failure", false, "When true, registrator will not exit after a lookup failure.")
 
 // below IP regex was obtained from http://blog.markhatton.co.uk/2011/03/15/regular-expressions-for-ip-addresses-cidr-ranges-and-hostnames/
 var ipRegEx, _ = regexp.Compile(`^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$`)
@@ -157,17 +158,19 @@ func main() {
 	}
 
 	log.Info("Creating Bridge")
-	b, err := bridge.New(docker, flag.Arg(0), bridge.Config{
-		HostIp:          selectedIP,
-		Internal:        *internal,
-		UseIpFromLabel:  *useIpFromLabel,
-		ForceTags:       *forceTags,
-		RefreshTtl:      *refreshTtl,
-		RefreshInterval: *refreshInterval,
-		DeregisterCheck: *deregister,
-		Cleanup:         *cleanup,
-		RequireLabel:    *requireLabel,
-	})
+	bridgeConfig := bridge.Config{
+		HostIp:                    selectedIP,
+		Internal:                  *internal,
+		UseIpFromLabel:            *useIpFromLabel,
+		ForceTags:                 *forceTags,
+		RefreshTtl:                *refreshTtl,
+		RefreshInterval:           *refreshInterval,
+		DeregisterCheck:           *deregister,
+		Cleanup:                   *cleanup,
+		RequireLabel:              *requireLabel,
+		ContinueOnIPLookupFailure: *continueOnIpLookupFailure,
+	}
+	b, err := bridge.New(docker, flag.Arg(0), bridgeConfig)
 	assert(err)
 	log.Info("Bridge Created")
 
@@ -282,17 +285,19 @@ func main() {
 func resyncProcess(b *bridge.Bridge, ipLookupSource string) {
 	if ipLookupSource != "" {
 		temporaryIP, success := bridge.GetIPFromExternalSource()
-		if !success {
+		if !success && b.config.ContinueOnIPLookupFailure != true {
 			os.Exit(2)
 		}
-		discoveredIP = temporaryIP
-		log.Infof("Resyncing process. IP to use is: %s", discoveredIP)
-		if !ipRegEx.MatchString(discoveredIP) {
-			fmt.Fprintf(os.Stderr, "Invalid IP when polling ipLookupSource '%s', please use a valid address.\n", discoveredIP)
-		} else {
-			go func(ip string, bridgeInstance *bridge.Bridge) {
-				b.AllocateNewIPToServices(ip)
-			}(discoveredIP, b)
+		if success {
+			discoveredIP = temporaryIP
+			log.Infof("Resyncing process. IP to use is: %s", discoveredIP)
+			if !ipRegEx.MatchString(discoveredIP) {
+				fmt.Fprintf(os.Stderr, "Invalid IP when polling ipLookupSource '%s', please use a valid address.\n", discoveredIP)
+			} else {
+				go func(ip string, bridgeInstance *bridge.Bridge) {
+					b.AllocateNewIPToServices(ip)
+				}(discoveredIP, b)
+			}
 		}
 	} else {
 		b.Sync(true)
