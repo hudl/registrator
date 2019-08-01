@@ -285,7 +285,7 @@ func main() {
 func resyncProcess(b *bridge.Bridge, ipLookupSource string) {
 	if ipLookupSource != "" {
 		temporaryIP, success := bridge.GetIPFromExternalSource()
-		if !success && bridge.ShouldExitOnIPLookupFailure(b) != true {
+		if !success && bridge.ShouldExitOnIPLookupFailure(b) {
 			os.Exit(2)
 		}
 		if success {
