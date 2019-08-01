@@ -55,7 +55,7 @@ func GetIPFromExternalSource() (string, bool) {
 		res, err := lookupIp(ipLookupAddress)
 		var fail error
 		if err != nil {
-			fail = fmt.Errorf("Failed to lookup IP Address from external source: %s. Waiting before attempting retry...", ipLookupAddress, err)
+			fail = fmt.Errorf("Failed to lookup IP Address from external source: %s. Waiting before attempting retry... %s", ipLookupAddress, err)
 		} else {
 			ip, err := ioutil.ReadAll(res.Body)
 			if err != nil {
