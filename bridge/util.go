@@ -40,8 +40,8 @@ func SetIPLookupRetries(number int) {
 }
 
 // ShouldContinueOnIPLookupFailure checks config if it should continue on ip failure.
-func ShouldContinueOnIPLookupFailure(b *Bridge) (bool) {
-	return b.config.ContinueOnIPLookupFailure
+func ShouldExitOnIPLookupFailure(b *Bridge) (bool) {
+	return b.config.ExitOnIPLookupFailure
 }
 
 func lookupIp(address string) (*http.Response, error) {

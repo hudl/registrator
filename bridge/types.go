@@ -30,7 +30,7 @@ type Config struct {
 	DeregisterCheck           string
 	Cleanup                   bool
 	RequireLabel              bool
-	ContinueOnIPLookupFailure bool
+	ExitOnIPLookupFailure     bool
 }
 
 type Service struct {
