@@ -158,7 +158,7 @@ func main() {
 	}
 
 	log.Info("Creating Bridge")
-	bridgeConfig := bridge.Config{
+	b, err := bridge.New(docker, flag.Arg(0), bridge.Config{
 		HostIp:                    selectedIP,
 		Internal:                  *internal,
 		UseIpFromLabel:            *useIpFromLabel,
@@ -169,8 +169,7 @@ func main() {
 		Cleanup:                   *cleanup,
 		RequireLabel:              *requireLabel,
 		ExitOnIPLookupFailure:     *exitOnIpLookupFailure,
-	}
-	b, err := bridge.New(docker, flag.Arg(0), bridgeConfig)
+	})
 	assert(err)
 	log.Info("Bridge Created")
 
