@@ -21,8 +21,7 @@ infrastructure:
       deployment_options:
         minimum_healthy_percent: 50
         maximum_percent: 100
-      scheduling_strategy: DAEMON
-      placement_strategies:
+      #scheduling_strategy: DAEMON
       logging:
         log_driver: sumologic
         log_options:
