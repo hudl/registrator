@@ -25,7 +25,7 @@ infrastructure:
       logging:
         log_driver: sumologic
         log_options:
-          - sumo-url: https://collectors.us2.sumologic.com/receiver/v1/http/ZaVnC4dhaV3mk-HkGnFXhZEyMwzk7bLFb3-W4qLeVhpH_cyVQNq970gYuk76CZQN8txlbobpWwslxJErgNGBnS5QIrxrU50-SmXfQ10SfPjcdIvl4ysNlg==
+          - sumo-url: https://collectors.us2.sumologic.com/receiver/v1/http/ZaVnC4dhaV2ElPzB3Wpy2EGIXqDq5nHoDJ0mfJiCu8vBsPpl68ddnafrgVG6PryDd-72ObLnjO_BoWYPJKxuQ_X18GnP-3SubNnmiiT1I_5TAR5R9euTVQ==
           - sumo-queue-size: "400"
           - sumo-source-name: $environment-$branch-registrator-{{Tag}}
           - sumo-source-host: $environment-{{Tag}}
