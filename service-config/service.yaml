@@ -1,4 +1,4 @@
-schema: 1.5.1
+schema: 1.5.5
 
 service:
   name:  registrator
@@ -22,15 +22,15 @@ infrastructure:
         minimum_healthy_percent: 50
         maximum_percent: 100
       scheduling_strategy: DAEMON
-      log_paths:
-      - sourceCategory: app_registrator
-        pathExpression: /var/log/app_registrator/**
-        dateFormat: yyyy-MM-dd HH:mm:ss
+      logging:
+        log_driver: sumologic
+        log_options:
+          - sumo-url: https://collectors.us2.sumologic.com/receiver/v1/http/ZaVnC4dhaV2ElPzB3Wpy2EGIXqDq5nHoDJ0mfJiCu8vBsPpl68ddnafrgVG6PryDd-72ObLnjO_BoWYPJKxuQ_X18GnP-3SubNnmiiT1I_5TAR5R9euTVQ==
+          - sumo-queue-size: "400"
+          - sumo-source-name: $environment-$branch-registrator-{{Tag}}
+          - sumo-source-host: $environment-{{Tag}}
+          - sumo-source-category: app_registrator
       volumes:
-      - name: log
-        host_path: /var/log/app_registrator
-        container_path: /logs
-        read_only: false
       - name: root
         host_path: /
         container_path: /rootfs
