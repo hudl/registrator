@@ -40,7 +40,7 @@ func SetIPLookupRetries(number int) {
 }
 
 // ShouldExitOnIPLookupFailure checks config if it should exit on ip failure.
-func ShouldExitOnIPLookupFailure(b *Bridge) (bool) {
+func ShouldExitOnIPLookupFailure(b *Bridge) bool {
 	return b.config.ExitOnIPLookupFailure
 }
 
@@ -59,7 +59,7 @@ func GetIPFromExternalSource() (string, bool) {
 		} else {
 			ip, err := ioutil.ReadAll(res.Body)
 			if err != nil {
-				fail = fmt.Errorf("Failed to read body of lookup from external source. Attempting retry", err)
+				fail = fmt.Errorf("Failed to read body of lookup from external source. Attempting retry: %s", err.Error())
 			} else {
 				log.Infof("Deferring to external source for IP address. Current IP is: %s", ip)
 				_ip = ip
