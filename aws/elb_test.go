@@ -338,7 +338,9 @@ func Test_mutateRegistrationInfoELBv2Only(t *testing.T) {
 	svc := bridge.Service{
 		Attrs: map[string]string{
 			"eureka_elbv2_only_registration": "true",
-			"eureka_lookup_elbv2_endpoint":   "false",
+			"eureka_elbv2_hostname":          "hostname-i-set",
+			"eureka_elbv2_port":              "65535",
+			"eureka_elbv2_targetgroup":       "arn:1234",
 			"eureka_datacenterinfo_name":     "AMAZON",
 		},
 		Name: "app",
@@ -383,14 +385,14 @@ func Test_mutateRegistrationInfoELBv2Only(t *testing.T) {
 		},
 	}
 	// Force parsing of metadata
-	err, _ := reg.Metadata.GetString("elbv2-endpoint")
-	if err != "" {
+	_, err := reg.Metadata.GetString("elbv2-endpoint")
+	if err != nil {
 		t.Errorf("Unable to parse metadata")
 	}
 	// Init LB info cache
 	thds := []*elbv2.TargetHealthDescription{}
 	tgArn := "arn:1234"
-	setupCache("123123412", "instance-123", "correct-hostname", 1234, 12345, tgArn, thds)
+	setupCache("123123412", "instance-123", "hostname-i-set", 1234, 65535, tgArn, thds)
 
 	r, _ := generalCache.Get("container_123123412")
 	lb := r.(*LoadBalancerRegistrationInfo)
