@@ -128,7 +128,6 @@ func mutateRegistrationInfo(service *bridge.Service, registration *fargo.Instanc
 
 func getELBMetadata(service *bridge.Service, hostName string, port int) (LoadBalancerRegistrationInfo, error) {
 	var elbMetadata LoadBalancerRegistrationInfo
-	awsMetadata := GetMetadata()
 
 	// We've been given the ELB endpoint, so use this
 	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" && service.Attrs["eureka_elbv2_targetgroup"] != "" {
