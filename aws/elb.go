@@ -49,35 +49,22 @@ func getECSSession() (*ecs.ECS, error) {
 }
 
 // CheckELBFlags - Helper function to check if the correct config flags are set to use ELBs
-// We accept two possible configurations here - either eureka_lookup_elbv2_endpoint can be set,
-// for automatic lookup, or eureka_elbv2_hostname, eureka_elbv2_port and eureka_elbv2_targetgroup can be set manually
-// to avoid the 10-20s wait for lookups
+// eureka_elbv2_hostname, eureka_elbv2_port and eureka_elbv2_targetgroup must be set manually
 func CheckELBFlags(service *bridge.Service) bool {
 
 	isAws := service.Attrs["eureka_datacenterinfo_name"] != fargo.MyOwn
-	var hasExplicit bool
-	var useLookup bool
+	var hasFlags bool
 
 	if service.Attrs["eureka_elbv2_hostname"] != "" && service.Attrs["eureka_elbv2_port"] != "" && service.Attrs["eureka_elbv2_targetgroup"] != "" {
 		v, err := strconv.ParseUint(service.Attrs["eureka_elbv2_port"], 10, 16)
 		if err != nil {
 			log.Errorf("eureka_elbv2_port must be valid 16-bit unsigned int, was %v : %s", v, err)
-			hasExplicit = false
+			hasFlags = false
 		}
-		hasExplicit = true
-		useLookup = true
+		hasFlags = true
 	}
 
-	if service.Attrs["eureka_lookup_elbv2_endpoint"] != "" {
-		v, err := strconv.ParseBool(service.Attrs["eureka_lookup_elbv2_endpoint"])
-		if err != nil {
-			log.Errorf("eureka_lookup_elbv2_endpoint must be valid boolean, was %v : %s", v, err)
-			useLookup = false
-		}
-		useLookup = v
-	}
-
-	if (hasExplicit || useLookup) && isAws {
+	if hasFlags && isAws {
 		return true
 	}
 	return false
@@ -516,9 +503,9 @@ func getELBStatus(client fargo.EurekaConnection, registration *fargo.Instance) f
 	result, err := client.GetInstance(registration.App, GetUniqueID(*registration))
 	if err != nil || result == nil {
 		// Can't find the ELB, this is more than likely expected. It takes a short amount of time
-		// after a container launch, for a new service, for the ELB to be fully provisioned. 
+		// after a container launch, for a new service, for the ELB to be fully provisioned.
 		// This gets retried 3 times with the RegisterWithELBv2() method and an error is logged
-		// after each of those fail. 
+		// after each of those fail.
 		log.Warningf("ELB not yet present, or error retrieving from eureka: %s\n", err)
 		return fargo.UNKNOWN
 	}
