@@ -9,7 +9,6 @@ import (
 type fakeFactory struct{}
 
 func (f *fakeFactory) New(uri *url.URL) RegistryAdapter {
-
 	return &fakeAdapter{}
 }
 

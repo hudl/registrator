@@ -88,7 +88,7 @@ Outer:
 		for _, listing := range b.services {
 			for _, service := range listing {
 				service.RLock()
-				if service.Name == extService.Name && serviceContainerName == service.Origin.Container.Name[1:] {
+				if service.Name == extService.Name && serviceContainerName == service.Origin.container.Name[1:] {
 					service.RUnlock()
 					continue Outer
 				}

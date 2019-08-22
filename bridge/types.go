@@ -60,7 +60,7 @@ type ServicePort struct {
 	ContainerHostname string
 	ContainerID       string
 	ContainerName     string
-	Container         *dockerapi.Container
+	container         *dockerapi.Container
 }
 
 // SyncMessage is the type used in the servicesync channel
