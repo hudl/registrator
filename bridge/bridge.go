@@ -36,13 +36,17 @@ func New(docker *dockerapi.Client, adapterUri string, config Config) (*Bridge, e
 	}
 
 	log.Debug("Using", uri.Scheme, "adapter:", uri)
-	return &Bridge{
+	bridge := &Bridge{
 		docker:         docker,
 		config:         config,
 		registry:       factory.New(uri),
 		services:       make(map[string][]*Service),
 		deadContainers: make(map[string]*DeadContainer),
-	}, nil
+	}
+
+	Initialize(bridge)
+
+	return bridge, nil
 }
 
 func (b *Bridge) Ping() error {
@@ -103,12 +107,16 @@ func (b *Bridge) getServicesCopy() map[string][]*Service {
 	return svcsCopy
 }
 
+func (b *Bridge) PushServiceSync(msg SyncMessage) {
+	SyncChannel[b] <- msg
+}
+
 func (b *Bridge) Sync(quiet bool) {
-	serviceSync(b, quiet, "")
+	// serviceSync(b, quiet, "")
 }
 
 func (b *Bridge) AllocateNewIPToServices(ip string) {
-	serviceSync(b, true, ip)
+	// serviceSync(b, true, ip)
 }
 
 func (b *Bridge) deleteDeadContainer(containerId string) {
