@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	dockerapi "github.com/fsouza/go-dockerclient"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -129,7 +130,8 @@ func Test_cleanupServices_DoesntRemoveNonMatchingService(t *testing.T) {
 	var docker = MockDockerClient{}
 	Register(new(fakeFactory), "fake")
 	newBridge, err := New(&docker, adapterUri, config)
-	keepMe := Service{ID: "keep-me-please-please"}
+	Hostname = "test"
+	keepMe := Service{ID: "keep-me-please-please", Name: "test1"}
 	var danglingServices = []*Service{
 		&keepMe,
 	}
@@ -147,6 +149,38 @@ func Test_cleanupServices_DoesntRemoveNonMatchingService(t *testing.T) {
 	assert.EqualValues(t, expectedServices, newBridge.services)
 	assert.NotNil(t, newBridge)
 	assert.NoError(t, err)
+}
+
+func Test_cleanupServices_RemovesMatchingService(t *testing.T) {
+	// Setup
+	var docker = MockDockerClient{}
+	var adapter = &fakeAdapter{}
+	Register(new(fakeFactory), "fake")
+	newBridge, err := New(&docker, adapterUri, config)
+	newBridge.registry = adapter
+	Hostname = "test"
+	keepMe := Service{ID: "keep-me-please-please", Name: "test1"}
+	fakeContainer := dockerapi.Container{ID: "bla", Name: "test"}
+	deleteMe := Service{ID: "test:test:0", Name: "test2", Origin: ServicePort{container: &fakeContainer}}
+
+	var danglingServices = []*Service{
+		&keepMe,
+		&deleteMe,
+	}
+	newBridge.services["test1"] = []*Service{&keepMe}
+	newBridge.services["test2"] = []*Service{&deleteMe}
+	adapter.On("Deregister", &deleteMe).Return(nil)
+
+	// Act
+	t.Run("Cleanup", func(t *testing.T) {
+		cleanupServices(newBridge, danglingServices)
+	})
+
+	// Assert
+	assert.NotNil(t, newBridge)
+	assert.NoError(t, err)
+	adapter.AssertCalled(t, "Deregister", &deleteMe)
+
 }
 
 // func Test_serviceSync(t *testing.T) {
