@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"os"
@@ -372,7 +373,7 @@ func (b *Bridge) remove(containerId string, deregister bool) {
 					log.Error("deregister failed:", service.ID, err)
 					continue
 				}
-				log.Debug("removed:", containerId[:12], service.ID)
+				log.Debug("removed:", fmt.Sprintf("\"%.12s\"", containerId), service.ID)
 			}
 		}
 		deregisterAll(b.services[containerId])
