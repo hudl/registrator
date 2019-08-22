@@ -61,6 +61,7 @@ func reregisterService(registry RegistryAdapter, service *Service, newIP string)
 			log.Error("Register during new IP Allocation failed:", service, err)
 			return
 		}
+		return
 	}
 	service.Lock()
 	err := registry.Register(service)
