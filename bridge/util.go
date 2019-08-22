@@ -146,13 +146,18 @@ func serviceMetaData(config *dockerapi.Config, port string) (map[string]string, 
 				continue
 			}
 			portkey := strings.SplitN(key, "_", 2)
-			_, err := strconv.Atoi(portkey[0])
-			if err == nil && len(portkey) > 1 {
-				if portkey[0] != port {
-					continue
+
+			// This is a port specific variable
+			if len(portkey) > 1 {
+				_, err := strconv.Atoi(portkey[1])
+				if err == nil {
+					// Ignore if it's not the port we're looking for
+					if portkey[1] != port {
+						continue
+					}
+					metadata[portkey[0]] = kv
+					metadataFromPort[portkey[0]] = true
 				}
-				metadata[portkey[1]] = kv
-				metadataFromPort[portkey[1]] = true
 			} else {
 				metadata[key] = kv
 			}
