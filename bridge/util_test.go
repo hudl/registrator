@@ -153,25 +153,25 @@ func TestGetIPFromExternalSource(t *testing.T) {
 	}
 }
 
-func Test_combineTags(t *testing.T) {
-	type args struct {
-		tagParts []string
-	}
-	tests := []struct {
-		name string
-		args args
-		want []string
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := combineTags(tt.args.tagParts...); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("combineTags() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
+// func Test_combineTags(t *testing.T) {
+// 	type args struct {
+// 		tagParts []string
+// 	}
+// 	tests := []struct {
+// 		name string
+// 		args args
+// 		want []string
+// 	}{
+// 		// TODO: Add test cases.
+// 	}
+// 	for _, tt := range tests {
+// 		t.Run(tt.name, func(t *testing.T) {
+// 			if got := combineTags(tt.args.tagParts...); !reflect.DeepEqual(got, tt.want) {
+// 				t.Errorf("combineTags() = %v, want %v", got, tt.want)
+// 			}
+// 		})
+// 	}
+// }
 
 func Test_lookupMetaData(t *testing.T) {
 
@@ -258,53 +258,49 @@ func Test_serviceMetaData(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, got1 := serviceMetaData(tt.args.config, tt.args.port)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("serviceMetaData() got = %v, want %v", got, tt.want)
-			}
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("serviceMetaData() got1 = %v, want %v", got1, tt.want1)
-			}
+			assert.True(t, reflect.DeepEqual(got, tt.want))
+			assert.True(t, reflect.DeepEqual(got1, tt.want1))
 		})
 	}
 }
 
-func Test_servicePort(t *testing.T) {
-	type args struct {
-		container *dockerapi.Container
-		port      dockerapi.Port
-		published []dockerapi.PortBinding
-	}
-	tests := []struct {
-		name string
-		args args
-		want ServicePort
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := servicePort(tt.args.container, tt.args.port, tt.args.published); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("servicePort() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
+// func Test_servicePort(t *testing.T) {
+// 	type args struct {
+// 		container *dockerapi.Container
+// 		port      dockerapi.Port
+// 		published []dockerapi.PortBinding
+// 	}
+// 	tests := []struct {
+// 		name string
+// 		args args
+// 		want ServicePort
+// 	}{
+// 		// TODO: Add test cases.
+// 	}
+// 	for _, tt := range tests {
+// 		t.Run(tt.name, func(t *testing.T) {
+// 			if got := servicePort(tt.args.container, tt.args.port, tt.args.published); !reflect.DeepEqual(got, tt.want) {
+// 				t.Errorf("servicePort() = %v, want %v", got, tt.want)
+// 			}
+// 		})
+// 	}
+// }
 
-func Test_serviceSync(t *testing.T) {
-	type args struct {
-		b     *Bridge
-		quiet bool
-		newIP string
-	}
-	tests := []struct {
-		name string
-		args args
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			serviceSync(tt.args.b, tt.args.quiet, tt.args.newIP)
-		})
-	}
-}
+// func Test_serviceSync(t *testing.T) {
+// 	type args struct {
+// 		b     *Bridge
+// 		quiet bool
+// 		newIP string
+// 	}
+// 	tests := []struct {
+// 		name string
+// 		args args
+// 	}{
+// 		// TODO: Add test cases.
+// 	}
+// 	for _, tt := range tests {
+// 		t.Run(tt.name, func(t *testing.T) {
+// 			serviceSync(tt.args.b, tt.args.quiet, tt.args.newIP)
+// 		})
+// 	}
+// }
