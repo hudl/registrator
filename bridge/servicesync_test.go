@@ -81,11 +81,10 @@ func Test_reregisterService_SetsCorrectValues(t *testing.T) {
 	assert.EqualValues(t, service, wantedService)
 }
 
-func Test_reregisterService_RegistersWithAdapter(t *testing.T) {
+func Test_reregisterService_ReRegistersWithAdapter(t *testing.T) {
 
 	// Setup
 	service := Service{IP: "1.2.3.4"}
-	//wantedService := Service{IP: "5.6.7.8", Origin: ServicePort{HostIP: "5.6.7.8"}}
 	adapter := fakeAdapter{}
 
 	newIP := "5.6.7.8"
@@ -101,6 +100,27 @@ func Test_reregisterService_RegistersWithAdapter(t *testing.T) {
 	// Assert
 	adapter.AssertExpectations(t)
 	adapter.AssertCalled(t, "Deregister", &service)
+	adapter.AssertCalled(t, "Register", &service)
+
+}
+
+func Test_reregisterService_DoesNotDeregisterWithNoIp(t *testing.T) {
+
+	// Setup
+	service := Service{IP: "1.2.3.4"}
+	adapter := fakeAdapter{}
+	newIP := ""
+
+	adapter.On("Register", &service).Return(nil)
+
+	// Act
+	t.Run("Test registers with adapter", func(t *testing.T) {
+		reregisterService(&adapter, &service, newIP)
+	})
+
+	// Assert
+	adapter.AssertExpectations(t)
+	adapter.AssertNotCalled(t, "Deregister", &service)
 	adapter.AssertCalled(t, "Register", &service)
 
 }
