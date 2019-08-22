@@ -217,14 +217,20 @@ func Test_serviceMetaData(t *testing.T) {
 		},
 	}
 
-	var useLabels = map[string]string{
-		"foo": "a",
-		"bar": "b",
+	var withPort = map[string]string{
+		"foo": "e",
+		"bar": "c",
+	}
+
+	var withoutPort = map[string]string{
+		"foo": "b",
+		"bar": "c",
 	}
 
 	var portKeys = map[string]bool{
 		"foo": true,
 	}
+	var withoutPortKeys = map[string]bool{}
 
 	type args struct {
 		config *dockerapi.Config
@@ -239,8 +245,14 @@ func Test_serviceMetaData(t *testing.T) {
 		{
 			name:  "Retrieves FOO value from port",
 			args:  args{config: &config, port: "1234"},
-			want:  useLabels,
+			want:  withPort,
 			want1: portKeys,
+		},
+		{
+			name:  "Retrieves FOO value without port",
+			args:  args{config: &config, port: ""},
+			want:  withoutPort,
+			want1: withoutPortKeys,
 		},
 	}
 	for _, tt := range tests {
