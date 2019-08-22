@@ -16,16 +16,22 @@ import (
 
 var serviceIDPattern = regexp.MustCompile(`^(.+?):([a-zA-Z0-9][a-zA-Z0-9_.-]+):[0-9]+(?::udp)?$`)
 
+// Simple interface for testing
+type DockerClient interface {
+	InspectContainer(c string) (*dockerapi.Container, error)
+	ListContainers(opts dockerapi.ListContainersOptions) ([]dockerapi.APIContainers, error)
+}
+
 type Bridge struct {
 	sync.Mutex
 	registry       RegistryAdapter
-	docker         *dockerapi.Client
+	docker         DockerClient
 	services       map[string][]*Service
 	deadContainers map[string]*DeadContainer
 	config         Config
 }
 
-func New(docker *dockerapi.Client, adapterUri string, config Config) (*Bridge, error) {
+func New(docker DockerClient, adapterUri string, config Config) (*Bridge, error) {
 	uri, err := url.Parse(adapterUri)
 	if err != nil {
 		return nil, errors.New("bad adapter uri: " + adapterUri)
