@@ -24,11 +24,11 @@ type MockDockerClient struct {
 
 func (m *MockDockerClient) ListContainers(opts dockerapi.ListContainersOptions) ([]dockerapi.APIContainers, error) {
 	args := m.Called(opts)
-	return nil, args.Error(1)
+	return args.Get(0).([]dockerapi.APIContainers), nil
 }
 func (m *MockDockerClient) InspectContainer(c string) (*dockerapi.Container, error) {
 	args := m.Called(c)
-	return nil, args.Error(1)
+	return args.Get(0).(*dockerapi.Container), nil
 }
 
 func Test_Initialize(t *testing.T) {
@@ -183,20 +183,101 @@ func Test_cleanupServices_RemovesMatchingService(t *testing.T) {
 
 }
 
-// func Test_serviceSync(t *testing.T) {
-// 	type args struct {
-// 		message SyncMessage
-// 		b       *Bridge
-// 	}
-// 	tests := []struct {
-// 		name string
-// 		args args
-// 	}{
-// 		// TODO: Add test cases.
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			serviceSync(tt.args.message, tt.args.b)
-// 		})
-// 	}
-// }
+func Test_serviceSync_ReregisterIsCalled(t *testing.T) {
+	// Setup
+	var docker = MockDockerClient{}
+	var adapter = &fakeAdapter{}
+	Register(new(fakeFactory), "fake")
+	newBridge, err := New(&docker, adapterUri, config)
+	newBridge.registry = adapter
+	Hostname = "test"
+
+	nonExitedContainers := []dockerapi.APIContainers{
+		{ID: "i-didnt-exit"},
+	}
+	service2 := Service{ID: "i-didnt-exit", Name: "test2"}
+
+	var expectedServices = map[string][]*Service{"i-didnt-exit": {
+		&service2,
+	}}
+	message := SyncMessage{Quiet: false, IP: "5.6.7.8"}
+
+	docker.On("ListContainers", mock.AnythingOfType("ListContainersOptions")).Return(nonExitedContainers)
+	adapter.On("Services").Return(expectedServices, nil)
+	adapter.On("Deregister", &service2).Return(nil)
+	adapter.On("Register", &service2).Return(nil)
+
+	newBridge.services["i-didnt-exit"] = []*Service{&service2}
+
+	// Act
+	t.Run("Testing service sync", func(t *testing.T) {
+		serviceSync(message, newBridge)
+	})
+
+	// Assert
+	assert.NotNil(t, newBridge)
+	assert.NoError(t, err)
+	adapter.AssertCalled(t, "Deregister", &service2)
+	adapter.AssertCalled(t, "Register", &service2)
+	assert.EqualValues(t, expectedServices, newBridge.services)
+	adapter.AssertExpectations(t)
+	docker.AssertExpectations(t)
+
+}
+
+func Test_serviceSync_ContainersAreCleanedUp(t *testing.T) {
+	// Setup
+	var docker = MockDockerClient{}
+	var adapter = &fakeAdapter{}
+	Register(new(fakeFactory), "fake")
+	newBridge, err := New(&docker, adapterUri, config)
+	newBridge.registry = adapter
+	Hostname = "test"
+
+	containers := []dockerapi.APIContainers{
+		{ID: "im-gone"},
+		{ID: "i-didnt-exit"},
+	}
+	container1 := dockerapi.Container{ID: "im-gone", State: dockerapi.State{Running: false}}
+
+	nonExitedContainers := []dockerapi.APIContainers{
+		{ID: "i-didnt-exit"},
+	}
+	service1 := Service{ID: "im-gone", Name: "test1"}
+	service2 := Service{ID: "i-didnt-exit", Name: "test2"}
+
+	var expectedServices = map[string][]*Service{"i-didnt-exit": {
+		&service2,
+	}}
+
+	opts1 := dockerapi.ListContainersOptions{}
+	opts2 := dockerapi.ListContainersOptions{Filters: filters}
+
+	message := SyncMessage{Quiet: false, IP: "5.6.7.8"}
+
+	docker.On("ListContainers", opts1).Return(containers)
+	docker.On("ListContainers", opts2).Return(nonExitedContainers)
+	docker.On("InspectContainer", "im-gone").Return(&container1)
+	adapter.On("Services").Return(expectedServices, nil)
+	adapter.On("Deregister", &service2).Return(nil)
+	adapter.On("Register", &service2).Return(nil)
+	adapter.On("Deregister", &service1).Return(nil)
+	adapter.On("Register", &service1).Return(nil).Once()
+
+	newBridge.services["im-gone"] = []*Service{&service1}
+	newBridge.services["i-didnt-exit"] = []*Service{&service2}
+
+	// Act
+	t.Run("Testing service sync", func(t *testing.T) {
+		serviceSync(message, newBridge)
+	})
+
+	// Assert
+	assert.NotNil(t, newBridge)
+	assert.NoError(t, err)
+	adapter.AssertCalled(t, "Deregister", &service1)
+	adapter.AssertCalled(t, "Register", &service2)
+	adapter.AssertExpectations(t)
+	docker.AssertExpectations(t)
+
+}
