@@ -6,10 +6,10 @@ import (
 	dockerapi "github.com/fsouza/go-dockerclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/suite"
 )
 
-var adapterUri = "eureka://bla:1234"
+var adapterUri = "fake://"
+
 var config = Config{
 	HostIp:       "1.2.3.4",
 	Internal:     false,
@@ -30,18 +30,17 @@ func (m *MockDockerClient) InspectContainer(c string) (*dockerapi.Container, err
 	return nil, args.Error(1)
 }
 
-type ServiceSyncTestSuite struct {
-	suite.Suite
-}
-
 func Test_Initialize(t *testing.T) {
 
 	var docker = MockDockerClient{}
-	var newBridge, _ = New(&docker, adapterUri, config)
+	Register(new(fakeFactory), "fake")
+	newBridge, err := New(&docker, adapterUri, config)
 
 	t.Run("Test Initialize", func(t *testing.T) {
 		Initialize(newBridge)
 	})
+	assert.NotNil(t, newBridge)
+	assert.NoError(t, err)
 
 }
 
@@ -125,23 +124,30 @@ func Test_reregisterService_DoesNotDeregisterWithNoIp(t *testing.T) {
 
 }
 
-// func Test_cleanupServices(t *testing.T) {
-// 	type args struct {
-// 		b                *Bridge
-// 		danglingServices []*Service
-// 	}
-// 	tests := []struct {
-// 		name string
-// 		args args
-// 	}{
-// 		// TODO: Add test cases.
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			cleanupServices(tt.args.b, tt.args.danglingServices)
-// 		})
-// 	}
-// }
+func Test_cleanupServices_DoesntRemoveNonMatchingService(t *testing.T) {
+	// Setup
+	var docker = MockDockerClient{}
+	Register(new(fakeFactory), "fake")
+	newBridge, err := New(&docker, adapterUri, config)
+	keepMe := Service{ID: "keep-me-please-please"}
+	var danglingServices = []*Service{
+		&keepMe,
+	}
+	var expectedServices = map[string][]*Service{"test1": {
+		&keepMe,
+	}}
+	newBridge.services["test1"] = []*Service{&keepMe}
+
+	// Act
+	t.Run("Cleanup", func(t *testing.T) {
+		cleanupServices(newBridge, danglingServices)
+	})
+
+	// Assert
+	assert.EqualValues(t, expectedServices, newBridge.services)
+	assert.NotNil(t, newBridge)
+	assert.NoError(t, err)
+}
 
 // func Test_serviceSync(t *testing.T) {
 // 	type args struct {
