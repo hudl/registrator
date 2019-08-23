@@ -119,11 +119,10 @@ func (b *Bridge) PushServiceSync(msg SyncMessage) {
 }
 
 func (b *Bridge) Sync(quiet bool) {
-	// serviceSync(b, quiet, "")
-}
-
-func (b *Bridge) AllocateNewIPToServices(ip string) {
-	// serviceSync(b, true, ip)
+	b.PushServiceSync(SyncMessage{
+		Quiet: quiet,
+		IP:    "",
+	})
 }
 
 func (b *Bridge) deleteDeadContainer(containerId string) {
@@ -244,7 +243,7 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	metadata, metadataFromPort := serviceMetaData(container.Config, port.ExposedPort)
 
 	ignore := mapDefault(metadata, "ignore", "")
-	log.Info("Checking Ignore: %s", ignore)
+	log.Debugf("Checking Ignore: %s", ignore)
 	if ignore != "" {
 		return nil
 	}
