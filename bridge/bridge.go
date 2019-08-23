@@ -260,7 +260,8 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	service.ID = hostname + ":" + container.Name[1:] + ":" + port.ExposedPort
 	service.Name = mapDefault(metadata, "name", defaultName)
 	if service.Name == defaultName {
-		log.Infof("Service does not have name via metadata. Default=%s, ContainerID=%s", defaultName, container.ID)
+		log.Warningf("Service does not have name via metadata. Default=%s, ContainerID=%s", defaultName, container.ID)
+		return nil
 	} else {
 		log.Infof("Service has metadata derived name=%s, Default=%s", service.Name, defaultName)
 	}
