@@ -1,33 +1,25 @@
 package bridge
 
 import (
+	"bytes"
+	"io/ioutil"
 	"net/http"
-	"reflect"
 	"sort"
 	"testing"
+	"time"
 
 	dockerapi "github.com/fsouza/go-dockerclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-type ClientMock struct {
-}
+// type MockedBody struct {
+// 	mock.Mock
+// }
 
-func (c *ClientMock) Get(value string) (*http.Response, error) {
-	return &http.Response{Body: new(MockedBody)}, nil
-}
-
-type MockedBody struct {
-	mock.Mock
-}
-
-func (m *MockedBody) Close() error {
-	return nil
-}
-func (m *MockedBody) Read(bytes []byte) (int, error) {
-	return 0, nil
-}
+// func (m *MockedBody) Close() error {
+// 	return nil
+// }
 
 func TestEscapedComma(t *testing.T) {
 	cases := []struct {
@@ -81,7 +73,7 @@ func TestEscapedComma(t *testing.T) {
 }
 
 func Test_mapDefault_ReturnsDefaultWhenMissing(t *testing.T) {
-	// Setup
+	// Arrange
 	var got string
 	key := "bla"
 	defaultStr := "my-default"
@@ -97,7 +89,7 @@ func Test_mapDefault_ReturnsDefaultWhenMissing(t *testing.T) {
 }
 
 func Test_mapDefault_ReturnsValueWhenPresent(t *testing.T) {
-	// Setup
+	// Arrange
 	var got string
 	key := "test-item"
 	expectedValue := "test-value"
@@ -113,68 +105,63 @@ func Test_mapDefault_ReturnsValueWhenPresent(t *testing.T) {
 	assert.Equal(t, got, expectedValue)
 }
 
-// func TestGetIPFromExternalSource(t *testing.T) {
+type ClientMock struct {
+	mock.Mock
+}
 
-// 	ipRetryInterval = 0
+func (c *ClientMock) Get(value string) (*http.Response, error) {
+	args := c.Called(value)
+	body := ioutil.NopCloser(bytes.NewReader(args.Get(0).([]byte)))
+	return &http.Response{StatusCode: http.StatusOK, Body: body}, nil
+}
 
-// 	client = new(ClientMock)
+func TestGetIPFromExternalSource_ReturnsIPCorrectly(t *testing.T) {
+	// Arrange
+	ipRetryInterval = 0
+	mockobj := ClientMock{}
+	client = &mockobj
+	SetExternalIPSource("http://localhost:1234")
+	SetIPLookupRetries(1)
 
-// 	tests := []struct {
-// 		name     string
-// 		want     string
-// 		want1    bool
-// 		ipSource string
-// 		attempts int
-// 	}{
-// 		{
-// 			name:     "Returns false when server doesn't exist",
-// 			ipSource: "http://localhost:1234",
-// 			attempts: 1,
-// 			want:     "",
-// 			want1:    false,
-// 		},
-// 		{
-// 			name:     "Returns correctly when IP found",
-// 			ipSource: "http://localhost:1234",
-// 			attempts: 1,
-// 			want:     "1.2.3.4",
-// 			want1:    true,
-// 		},
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			SetExternalIPSource(tt.ipSource)
-// 			SetIPLookupRetries(tt.attempts)
-// 			got, got1 := GetIPFromExternalSource()
-// 			assert.Equal(t, got, tt.want)
-// 			assert.Equal(t, got1, tt.want1)
-// 		})
-// 	}
-// }
+	var got string
+	var got1 bool
+	mockobj.On("Get", "http://localhost:1234").Return([]byte("1.2.3.4"))
 
-// func Test_combineTags(t *testing.T) {
-// 	type args struct {
-// 		tagParts []string
-// 	}
-// 	tests := []struct {
-// 		name string
-// 		args args
-// 		want []string
-// 	}{
-// 		// TODO: Add test cases.
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			if got := combineTags(tt.args.tagParts...); !reflect.DeepEqual(got, tt.want) {
-// 				t.Errorf("combineTags() = %v, want %v", got, tt.want)
-// 			}
-// 		})
-// 	}
-// }
+	// Act
+	t.Run("Returns IP correctly", func(t *testing.T) {
+		got, got1 = GetIPFromExternalSource()
+	})
+
+	// Assert
+	mockobj.AssertExpectations(t)
+	assert.Equal(t, "1.2.3.4", got)
+	assert.Equal(t, true, got1)
+}
+
+func TestGetIPFromExternalSource_ReturnsFalseWhenServerDoesNotExist(t *testing.T) {
+	// Arrange
+	ipRetryInterval = 0
+	SetExternalIPSource("http://localhost:1234")
+	SetIPLookupRetries(1)
+	client = &http.Client{
+		Timeout: time.Duration(1 * time.Second),
+	}
+
+	var got string
+	var got1 bool
+
+	// Act
+	t.Run("Returns false when server does not exist", func(t *testing.T) {
+		got, got1 = GetIPFromExternalSource()
+	})
+
+	// Assert
+	assert.Equal(t, "", got)
+	assert.Equal(t, false, got1)
+}
 
 func Test_lookupMetaData_ReturnsVarWhenPresent(t *testing.T) {
-
-	// Setup
+	// Arrange
 	config := dockerapi.Config{Env: []string{"MY_VAR=a", "MY_VAR2=b"}}
 	var got string
 	key := "MY_VAR"
@@ -189,8 +176,7 @@ func Test_lookupMetaData_ReturnsVarWhenPresent(t *testing.T) {
 }
 
 func Test_lookupMetaData_ReturnsEmptyWhenNotPresent(t *testing.T) {
-
-	// Setup
+	// Arrange
 	config := dockerapi.Config{Env: []string{"MY_VAR=a", "MY_VAR2=b"}}
 	var got string
 	key := "NOT_HERE"
@@ -205,7 +191,7 @@ func Test_lookupMetaData_ReturnsEmptyWhenNotPresent(t *testing.T) {
 }
 
 func Test_serviceMetaData_PortValueTakesPrecedence(t *testing.T) {
-	// Setup
+	// Arrange
 	config := dockerapi.Config{Env: []string{
 		"SERVICE_FOO=b",
 		"SERVICE_BAR=c",
@@ -232,13 +218,13 @@ func Test_serviceMetaData_PortValueTakesPrecedence(t *testing.T) {
 
 	})
 	// Assert
-	assert.True(t, reflect.DeepEqual(got, withPort))
-	assert.True(t, reflect.DeepEqual(got2, portKeys))
+	assert.EqualValues(t, withPort, got)
+	assert.EqualValues(t, portKeys, got2)
 
 }
 
 func Test_serviceMetaData_UseNormalValueWhenNoPort(t *testing.T) {
-	// Setup
+	// Arrange
 	config := dockerapi.Config{Env: []string{
 		"SERVICE_FOO=b",
 		"SERVICE_BAR=c",
@@ -264,48 +250,6 @@ func Test_serviceMetaData_UseNormalValueWhenNoPort(t *testing.T) {
 	})
 
 	// Assert
-	assert.True(t, reflect.DeepEqual(got, withoutPort))
-	assert.True(t, reflect.DeepEqual(got2, withoutPortKeys))
-
+	assert.EqualValues(t, withoutPort, got)
+	assert.EqualValues(t, withoutPortKeys, got2)
 }
-
-// func Test_servicePort(t *testing.T) {
-// 	type args struct {
-// 		container *dockerapi.Container
-// 		port      dockerapi.Port
-// 		published []dockerapi.PortBinding
-// 	}
-// 	tests := []struct {
-// 		name string
-// 		args args
-// 		want ServicePort
-// 	}{
-// 		// TODO: Add test cases.
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			if got := servicePort(tt.args.container, tt.args.port, tt.args.published); !reflect.DeepEqual(got, tt.want) {
-// 				t.Errorf("servicePort() = %v, want %v", got, tt.want)
-// 			}
-// 		})
-// 	}
-// }
-
-// func Test_serviceSync(t *testing.T) {
-// 	type args struct {
-// 		b     *Bridge
-// 		quiet bool
-// 		newIP string
-// 	}
-// 	tests := []struct {
-// 		name string
-// 		args args
-// 	}{
-// 		// TODO: Add test cases.
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			serviceSync(tt.args.b, tt.args.quiet, tt.args.newIP)
-// 		})
-// 	}
-// }

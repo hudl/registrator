@@ -15,7 +15,12 @@ import (
 var ipLookupAddress = ""
 var ipLookupRetries = 0
 var ipRetryInterval = 10
-var client = http.Client{
+
+type httpClient interface {
+	Get(value string) (*http.Response, error)
+}
+
+var client httpClient = &http.Client{
 	Timeout: time.Duration(60 * time.Second),
 }
 
