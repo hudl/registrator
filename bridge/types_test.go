@@ -34,5 +34,5 @@ func (f *fakeAdapter) Refresh(service *Service) error {
 }
 func (f *fakeAdapter) Services() ([]*Service, error) {
 	args := f.Called()
-	return nil, args.Error(0)
+	return args.Get(0).([]*Service), nil
 }

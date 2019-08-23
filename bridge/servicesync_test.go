@@ -203,7 +203,7 @@ func Test_serviceSync_ReregisterIsCalled(t *testing.T) {
 	message := SyncMessage{Quiet: false, IP: "5.6.7.8"}
 
 	docker.On("ListContainers", mock.AnythingOfType("ListContainersOptions")).Return(nonExitedContainers)
-	adapter.On("Services").Return(expectedServices, nil)
+	adapter.On("Services").Return([]*Service{}, nil)
 	adapter.On("Deregister", &service2).Return(nil)
 	adapter.On("Register", &service2).Return(nil)
 
@@ -246,10 +246,6 @@ func Test_serviceSync_ContainersAreCleanedUp(t *testing.T) {
 	service1 := Service{ID: "im-gone", Name: "test1"}
 	service2 := Service{ID: "i-didnt-exit", Name: "test2"}
 
-	var expectedServices = map[string][]*Service{"i-didnt-exit": {
-		&service2,
-	}}
-
 	opts1 := dockerapi.ListContainersOptions{}
 	opts2 := dockerapi.ListContainersOptions{Filters: filters}
 
@@ -258,7 +254,7 @@ func Test_serviceSync_ContainersAreCleanedUp(t *testing.T) {
 	docker.On("ListContainers", opts1).Return(containers)
 	docker.On("ListContainers", opts2).Return(nonExitedContainers)
 	docker.On("InspectContainer", "im-gone").Return(&container1)
-	adapter.On("Services").Return(expectedServices, nil)
+	adapter.On("Services").Return([]*Service{}, nil)
 	adapter.On("Deregister", &service2).Return(nil)
 	adapter.On("Register", &service2).Return(nil)
 	adapter.On("Deregister", &service1).Return(nil)
