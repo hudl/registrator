@@ -45,25 +45,8 @@ func Test_Initialize(t *testing.T) {
 
 }
 
-// func Test_channelRun(t *testing.T) {
-// 	type args struct {
-// 		bridge *Bridge
-// 	}
-// 	tests := []struct {
-// 		name string
-// 		args args
-// 	}{
-// 		// TODO: Add test cases.
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			channelRun(tt.args.bridge)
-// 		})
-// 	}
-// }
-
 func Test_reregisterService_SetsCorrectValues(t *testing.T) {
-	// Setup
+	// Arrange
 	service := Service{IP: "1.2.3.4"}
 	wantedService := Service{IP: "5.6.7.8", Origin: ServicePort{HostIP: "5.6.7.8"}}
 	adapter := fakeAdapter{}
@@ -83,7 +66,7 @@ func Test_reregisterService_SetsCorrectValues(t *testing.T) {
 
 func Test_reregisterService_ReRegistersWithAdapter(t *testing.T) {
 
-	// Setup
+	// Arrange
 	service := Service{IP: "1.2.3.4"}
 	adapter := fakeAdapter{}
 
@@ -106,7 +89,7 @@ func Test_reregisterService_ReRegistersWithAdapter(t *testing.T) {
 
 func Test_reregisterService_DoesNotDeregisterWithNoIp(t *testing.T) {
 
-	// Setup
+	// Arrange
 	service := Service{IP: "1.2.3.4"}
 	adapter := fakeAdapter{}
 	newIP := ""
@@ -184,7 +167,7 @@ func Test_cleanupServices_RemovesMatchingService(t *testing.T) {
 }
 
 func Test_serviceSync_ReregisterIsCalled(t *testing.T) {
-	// Setup
+	// Arrange
 	var docker = MockDockerClient{}
 	var adapter = &fakeAdapter{}
 	Register(new(fakeFactory), "fake")
@@ -226,7 +209,7 @@ func Test_serviceSync_ReregisterIsCalled(t *testing.T) {
 }
 
 func Test_serviceSync_ContainersAreCleanedUp(t *testing.T) {
-	// Setup
+	// Arrange
 	var docker = MockDockerClient{}
 	var adapter = &fakeAdapter{}
 	Register(new(fakeFactory), "fake")
