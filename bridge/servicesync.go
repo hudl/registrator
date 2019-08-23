@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"encoding/json"
 	"sync"
 
 	dockerapi "github.com/fsouza/go-dockerclient"
@@ -33,7 +34,8 @@ func channelRun(bridge *Bridge) {
 }
 
 func reregisterService(registry RegistryAdapter, service *Service, newIP string) {
-	log.Debugf("Service: %s", service)
+	repr, _ := json.MarshalIndent(service, "", " ")
+	log.Debugf("Service: %s", repr)
 	if newIP != "" {
 		service.RLock()
 		if service.IP != newIP {
