@@ -172,39 +172,40 @@ func Test_mapDefault_ReturnsValueWhenPresent(t *testing.T) {
 // 	}
 // }
 
-func Test_lookupMetaData(t *testing.T) {
+func Test_lookupMetaData_ReturnsVarWhenPresent(t *testing.T) {
 
+	// Setup
 	config := dockerapi.Config{Env: []string{"MY_VAR=a", "MY_VAR2=b"}}
-	type args struct {
-		config *dockerapi.Config
-		key    string
-	}
-	tests := []struct {
-		name string
-		args args
-		want string
-	}{
-		{
-			name: "Return MY_VAR if present",
-			args: args{config: &config, key: "MY_VAR"},
-			want: "a",
-		},
-		{
-			name: "Return empty if not present",
-			args: args{config: &config, key: "NOT_HERE"},
-			want: "",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := lookupMetaData(tt.args.config, tt.args.key)
-			assert.Equal(t, tt.want, got)
-		})
-	}
+	var got string
+	key := "MY_VAR"
+
+	// Act
+	t.Run("Returns value when present", func(t *testing.T) {
+		got = lookupMetaData(&config, key)
+	})
+
+	// Assert
+	assert.Equal(t, "a", got)
 }
 
-func Test_serviceMetaData(t *testing.T) {
+func Test_lookupMetaData_ReturnsEmptyWhenNotPresent(t *testing.T) {
 
+	// Setup
+	config := dockerapi.Config{Env: []string{"MY_VAR=a", "MY_VAR2=b"}}
+	var got string
+	key := "NOT_HERE"
+
+	// Act
+	t.Run("Returns value when present", func(t *testing.T) {
+		got = lookupMetaData(&config, key)
+	})
+
+	// Assert
+	assert.Equal(t, "", got)
+}
+
+func Test_serviceMetaData_PortValueTakesPrecedence(t *testing.T) {
+	// Setup
 	config := dockerapi.Config{Env: []string{
 		"SERVICE_FOO=b",
 		"SERVICE_BAR=c",
@@ -215,52 +216,57 @@ func Test_serviceMetaData(t *testing.T) {
 			"SERVICE_FOO": "a",
 		},
 	}
-
 	var withPort = map[string]string{
 		"foo": "e",
 		"bar": "c",
 	}
+	var portKeys = map[string]bool{
+		"foo": true,
+	}
+	var got map[string]string
+	var got2 map[string]bool
 
+	// Act
+	t.Run("Port value is retrieved in precedence", func(t *testing.T) {
+		got, got2 = serviceMetaData(&config, "1234")
+
+	})
+	// Assert
+	assert.True(t, reflect.DeepEqual(got, withPort))
+	assert.True(t, reflect.DeepEqual(got2, portKeys))
+
+}
+
+func Test_serviceMetaData_UseNormalValueWhenNoPort(t *testing.T) {
+	// Setup
+	config := dockerapi.Config{Env: []string{
+		"SERVICE_FOO=b",
+		"SERVICE_BAR=c",
+		"NOT_ME=d",
+		"SERVICE_FOO_1234=e",
+	},
+		Labels: map[string]string{
+			"SERVICE_FOO": "a",
+		},
+	}
 	var withoutPort = map[string]string{
 		"foo": "b",
 		"bar": "c",
 	}
-
-	var portKeys = map[string]bool{
-		"foo": true,
-	}
 	var withoutPortKeys = map[string]bool{}
+	var got map[string]string
+	var got2 map[string]bool
 
-	type args struct {
-		config *dockerapi.Config
-		port   string
-	}
-	tests := []struct {
-		name  string
-		args  args
-		want  map[string]string
-		want1 map[string]bool
-	}{
-		{
-			name:  "Retrieves FOO value from port",
-			args:  args{config: &config, port: "1234"},
-			want:  withPort,
-			want1: portKeys,
-		},
-		{
-			name:  "Retrieves FOO value without port",
-			args:  args{config: &config, port: ""},
-			want:  withoutPort,
-			want1: withoutPortKeys,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, got1 := serviceMetaData(tt.args.config, tt.args.port)
-			assert.True(t, reflect.DeepEqual(got, tt.want))
-			assert.True(t, reflect.DeepEqual(got1, tt.want1))
-		})
-	}
+	// Act
+	t.Run("Normal value used when port not specified", func(t *testing.T) {
+		got, got2 = serviceMetaData(&config, "")
+
+	})
+
+	// Assert
+	assert.True(t, reflect.DeepEqual(got, withoutPort))
+	assert.True(t, reflect.DeepEqual(got2, withoutPortKeys))
+
 }
 
 // func Test_servicePort(t *testing.T) {
