@@ -11,6 +11,24 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+type ClientMock struct {
+}
+
+func (c *ClientMock) Get(value string) (*http.Response, error) {
+	return &http.Response{Body: new(MockedBody)}, nil
+}
+
+type MockedBody struct {
+	mock.Mock
+}
+
+func (m *MockedBody) Close() error {
+	return nil
+}
+func (m *MockedBody) Read(bytes []byte) (int, error) {
+	return 0, nil
+}
+
 func TestEscapedComma(t *testing.T) {
 	cases := []struct {
 		Tag      string
@@ -62,56 +80,37 @@ func TestEscapedComma(t *testing.T) {
 	}
 }
 
-func Test_mapDefault(t *testing.T) {
-	type args struct {
-		m        map[string]string
-		key      string
-		default_ string
-	}
-
+func Test_mapDefault_ReturnsDefaultWhenMissing(t *testing.T) {
+	// Setup
+	var got string
+	key := "bla"
+	defaultStr := "my-default"
 	metadata := make(map[string]string)
 	metadata["test-item"] = "test-value"
 
-	tests := []struct {
-		name string
-		args args
-		want string
-	}{
-		{
-			name: "Returns default when missing",
-			args: args{m: metadata, key: "bla", default_: "my-default"},
-			want: "my-default",
-		},
-		{
-			name: "Returns value when present",
-			args: args{m: metadata, key: "test-item", default_: "my-default"},
-			want: "test-value",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := mapDefault(tt.args.m, tt.args.key, tt.args.default_)
-			assert.Equal(t, got, tt.want)
-		})
-	}
+	// Act
+	t.Run("Returns default when key is missing", func(t *testing.T) {
+		got = mapDefault(metadata, key, defaultStr)
+	})
+	// Assert
+	assert.Equal(t, got, defaultStr)
 }
 
-type ClientMock struct {
-}
+func Test_mapDefault_ReturnsValueWhenPresent(t *testing.T) {
+	// Setup
+	var got string
+	key := "test-item"
+	expectedValue := "test-value"
+	defaultStr := "my-default"
+	metadata := make(map[string]string)
+	metadata["test-item"] = "test-value"
 
-func (c *ClientMock) Get(value string) (*http.Response, error) {
-	return &http.Response{Body: new(MockedBody)}, nil
-}
-
-type MockedBody struct {
-	mock.Mock
-}
-
-func (m *MockedBody) Close() error {
-	return nil
-}
-func (m *MockedBody) Read(bytes []byte) (int, error) {
-	return 0, nil
+	// Act
+	t.Run("Returns default when key is missing", func(t *testing.T) {
+		got = mapDefault(metadata, key, defaultStr)
+	})
+	// Assert
+	assert.Equal(t, got, expectedValue)
 }
 
 // func TestGetIPFromExternalSource(t *testing.T) {
