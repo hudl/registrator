@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -357,6 +358,8 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	service.Attrs = metadata
 	service.TTL = b.config.RefreshTtl
 
+	metadataJSON, _ := json.MarshalIndent(metadata, "", " ")
+	log.Debugf("Returning metadata for new service: %s", metadataJSON)
 	return service
 }
 

@@ -253,3 +253,34 @@ func Test_serviceMetaData_UseNormalValueWhenNoPort(t *testing.T) {
 	assert.EqualValues(t, withoutPort, got)
 	assert.EqualValues(t, withoutPortKeys, got2)
 }
+
+func Test_serviceMetaData_EurekaMetadataSetCorrectly(t *testing.T) {
+	// Arrange
+	config := dockerapi.Config{Env: []string{
+		"NOT_ME=d",
+		"SERVICE_FOO=b",
+		"SERVICE_FOO_1234=e",
+		"SERVICE_EUREKA_METADATA_branch=testbranch",
+	},
+		Labels: map[string]string{
+			"SERVICE_FOO": "a",
+		},
+	}
+	var withoutPort = map[string]string{
+		"eureka_metadata_branch": "testbranch",
+		"foo":                    "b",
+	}
+	var withoutPortKeys = map[string]bool{}
+	var got map[string]string
+	var got2 map[string]bool
+
+	// Act
+	t.Run("Eureka metadata is correctly retrieved", func(t *testing.T) {
+		got, got2 = serviceMetaData(&config, "")
+
+	})
+
+	// Assert
+	assert.EqualValues(t, withoutPort, got)
+	assert.EqualValues(t, withoutPortKeys, got2)
+}

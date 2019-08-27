@@ -162,10 +162,10 @@ func serviceMetaData(config *dockerapi.Config, port string) (map[string]string, 
 					}
 					metadata[portkey[0]] = kv
 					metadataFromPort[portkey[0]] = true
+					continue
 				}
-			} else {
-				metadata[key] = kv
 			}
+			metadata[key] = kv
 		}
 	}
 	return metadata, metadataFromPort
