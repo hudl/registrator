@@ -13,14 +13,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// type MockedBody struct {
-// 	mock.Mock
-// }
-
-// func (m *MockedBody) Close() error {
-// 	return nil
-// }
-
 func TestEscapedComma(t *testing.T) {
 	cases := []struct {
 		Tag      string
