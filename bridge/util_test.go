@@ -196,7 +196,7 @@ func Test_serviceMetaData_PortValueTakesPrecedence(t *testing.T) {
 		"SERVICE_FOO=b",
 		"SERVICE_BAR=c",
 		"NOT_ME=d",
-		"SERVICE_FOO_1234=e",
+		"SERVICE_1234_FOO=e",
 	},
 		Labels: map[string]string{
 			"SERVICE_FOO": "a",
@@ -229,7 +229,7 @@ func Test_serviceMetaData_UseNormalValueWhenNoPort(t *testing.T) {
 		"SERVICE_FOO=b",
 		"SERVICE_BAR=c",
 		"NOT_ME=d",
-		"SERVICE_FOO_1234=e",
+		"SERVICE_1234_FOO=e",
 	},
 		Labels: map[string]string{
 			"SERVICE_FOO": "a",
@@ -259,7 +259,7 @@ func Test_serviceMetaData_EurekaMetadataSetCorrectly(t *testing.T) {
 	config := dockerapi.Config{Env: []string{
 		"NOT_ME=d",
 		"SERVICE_FOO=b",
-		"SERVICE_FOO_1234=e",
+		"SERVICE_1234_FOO=e",
 		"SERVICE_EUREKA_METADATA_branch=testbranch",
 	},
 		Labels: map[string]string{
