@@ -159,16 +159,16 @@ func main() {
 
 	log.Info("Creating Bridge")
 	b, err := bridge.New(docker, flag.Arg(0), bridge.Config{
-		HostIp:                    selectedIP,
-		Internal:                  *internal,
-		UseIpFromLabel:            *useIpFromLabel,
-		ForceTags:                 *forceTags,
-		RefreshTtl:                *refreshTtl,
-		RefreshInterval:           *refreshInterval,
-		DeregisterCheck:           *deregister,
-		Cleanup:                   *cleanup,
-		RequireLabel:              *requireLabel,
-		ExitOnIPLookupFailure:     *exitOnIpLookupFailure,
+		HostIp:                selectedIP,
+		Internal:              *internal,
+		UseIpFromLabel:        *useIpFromLabel,
+		ForceTags:             *forceTags,
+		RefreshTtl:            *refreshTtl,
+		RefreshInterval:       *refreshInterval,
+		DeregisterCheck:       *deregister,
+		Cleanup:               *cleanup,
+		RequireLabel:          *requireLabel,
+		ExitOnIPLookupFailure: *exitOnIpLookupFailure,
 	})
 	assert(err)
 	log.Info("Bridge Created")
@@ -194,7 +194,10 @@ func main() {
 	events := make(chan *dockerapi.APIEvents)
 	assert(docker.AddEventListener(events))
 
-	b.Sync(false)
+	b.PushServiceSync(bridge.SyncMessage{
+		Quiet: false,
+		IP:    selectedIP,
+	})
 
 	// Start a IP check ticker only if an external source was provided
 	if *ipLookupSource != "" {
@@ -203,9 +206,7 @@ func main() {
 			for {
 				select {
 				case <-ipTicker.C:
-					b.Lock()
 					resyncProcess(b, *ipLookupSource)
-					b.Unlock()
 				case <-quit:
 					log.Debug("Quit message received. Exiting IP Check loop")
 					ipTicker.Stop()
@@ -256,9 +257,7 @@ func main() {
 			for {
 				select {
 				case <-resyncTicker.C:
-					b.Lock()
 					resyncProcess(b, *ipLookupSource)
-					b.Unlock()
 				case <-quit:
 					log.Debug("Quit message received. Exiting Resync loop")
 					resyncTicker.Stop()
@@ -287,15 +286,17 @@ func resyncProcess(b *bridge.Bridge, ipLookupSource string) {
 		if !success && bridge.ShouldExitOnIPLookupFailure(b) {
 			os.Exit(2)
 		}
+
 		if success {
 			discoveredIP = temporaryIP
 			log.Infof("Resyncing process. IP to use is: %s", discoveredIP)
 			if !ipRegEx.MatchString(discoveredIP) {
 				fmt.Fprintf(os.Stderr, "Invalid IP when polling ipLookupSource '%s', please use a valid address.\n", discoveredIP)
 			} else {
-				go func(ip string, bridgeInstance *bridge.Bridge) {
-					b.AllocateNewIPToServices(ip)
-				}(discoveredIP, b)
+				b.PushServiceSync(bridge.SyncMessage{
+					Quiet: true,
+					IP:    discoveredIP,
+				})
 			}
 		}
 	} else {

@@ -21,29 +21,29 @@ type RegistryAdapter interface {
 }
 
 type Config struct {
-	HostIp                    string
-	Internal                  bool
-	UseIpFromLabel            string
-	ForceTags                 string
-	RefreshTtl                int
-	RefreshInterval           int
-	DeregisterCheck           string
-	Cleanup                   bool
-	RequireLabel              bool
-	ExitOnIPLookupFailure     bool
+	HostIp                string
+	Internal              bool
+	UseIpFromLabel        string
+	ForceTags             string
+	RefreshTtl            int
+	RefreshInterval       int
+	DeregisterCheck       string
+	Cleanup               bool
+	RequireLabel          bool
+	ExitOnIPLookupFailure bool
 }
 
 type Service struct {
 	sync.RWMutex
-	ID    			string
-	Name  			string
-	Port  			int
-	IP    			string
-	UseExposedPorts	bool
-	Tags  			[]string
-	Attrs 			map[string]string
-	TTL   			int
-	Origin ServicePort
+	ID              string
+	Name            string
+	Port            int
+	IP              string
+	UseExposedPorts bool
+	Tags            []string
+	Attrs           map[string]string
+	TTL             int
+	Origin          ServicePort
 }
 
 type DeadContainer struct {
@@ -61,4 +61,10 @@ type ServicePort struct {
 	ContainerID       string
 	ContainerName     string
 	container         *dockerapi.Container
+}
+
+// SyncMessage is the type used in the servicesync channel
+type SyncMessage struct {
+	Quiet bool
+	IP    string
 }

@@ -1,7 +1,9 @@
 package bridge
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"os"
@@ -16,16 +18,22 @@ import (
 
 var serviceIDPattern = regexp.MustCompile(`^(.+?):([a-zA-Z0-9][a-zA-Z0-9_.-]+):[0-9]+(?::udp)?$`)
 
+// Simple interface for testing
+type DockerClient interface {
+	InspectContainer(c string) (*dockerapi.Container, error)
+	ListContainers(opts dockerapi.ListContainersOptions) ([]dockerapi.APIContainers, error)
+}
+
 type Bridge struct {
 	sync.Mutex
 	registry       RegistryAdapter
-	docker         *dockerapi.Client
+	docker         DockerClient
 	services       map[string][]*Service
 	deadContainers map[string]*DeadContainer
 	config         Config
 }
 
-func New(docker *dockerapi.Client, adapterUri string, config Config) (*Bridge, error) {
+func New(docker DockerClient, adapterUri string, config Config) (*Bridge, error) {
 	uri, err := url.Parse(adapterUri)
 	if err != nil {
 		return nil, errors.New("bad adapter uri: " + adapterUri)
@@ -36,13 +44,17 @@ func New(docker *dockerapi.Client, adapterUri string, config Config) (*Bridge, e
 	}
 
 	log.Debug("Using", uri.Scheme, "adapter:", uri)
-	return &Bridge{
+	bridge := &Bridge{
 		docker:         docker,
 		config:         config,
 		registry:       factory.New(uri),
 		services:       make(map[string][]*Service),
 		deadContainers: make(map[string]*DeadContainer),
-	}, nil
+	}
+
+	Initialize(bridge)
+
+	return bridge, nil
 }
 
 func (b *Bridge) Ping() error {
@@ -103,12 +115,15 @@ func (b *Bridge) getServicesCopy() map[string][]*Service {
 	return svcsCopy
 }
 
-func (b *Bridge) Sync(quiet bool) {
-	serviceSync(b, quiet, "")
+func (b *Bridge) PushServiceSync(msg SyncMessage) {
+	SyncChannel[b] <- msg
 }
 
-func (b *Bridge) AllocateNewIPToServices(ip string) {
-	serviceSync(b, true, ip)
+func (b *Bridge) Sync(quiet bool) {
+	b.PushServiceSync(SyncMessage{
+		Quiet: quiet,
+		IP:    "",
+	})
 }
 
 func (b *Bridge) deleteDeadContainer(containerId string) {
@@ -229,7 +244,7 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	metadata, metadataFromPort := serviceMetaData(container.Config, port.ExposedPort)
 
 	ignore := mapDefault(metadata, "ignore", "")
-	log.Info("Checking Ignore: %s", ignore)
+	log.Debugf("Checking Ignore: %s", ignore)
 	if ignore != "" {
 		return nil
 	}
@@ -246,7 +261,8 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	service.ID = hostname + ":" + container.Name[1:] + ":" + port.ExposedPort
 	service.Name = mapDefault(metadata, "name", defaultName)
 	if service.Name == defaultName {
-		log.Infof("Service does not have name via metadata. Default=%s, ContainerID=%s", defaultName, container.ID)
+		log.Warningf("Service does not have name via metadata. Default=%s, ContainerID=%s", defaultName, container.ID)
+		return nil
 	} else {
 		log.Infof("Service has metadata derived name=%s, Default=%s", service.Name, defaultName)
 	}
@@ -342,6 +358,8 @@ func (b *Bridge) newService(port ServicePort, isgroup bool) *Service {
 	service.Attrs = metadata
 	service.TTL = b.config.RefreshTtl
 
+	metadataJSON, _ := json.MarshalIndent(metadata, "", " ")
+	log.Debugf("Returning metadata for new service: %s", metadataJSON)
 	return service
 }
 
@@ -358,7 +376,7 @@ func (b *Bridge) remove(containerId string, deregister bool) {
 					log.Error("deregister failed:", service.ID, err)
 					continue
 				}
-				log.Debug("removed:", containerId[:12], service.ID)
+				log.Debug("removed:", fmt.Sprintf("\"%.12s\"", containerId), service.ID)
 			}
 		}
 		deregisterAll(b.services[containerId])
