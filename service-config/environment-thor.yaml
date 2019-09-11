@@ -7,4 +7,4 @@ infrastructure:
         log_options:
         - sumo-source-category: THOR_app_registrator
     preferences:
-      ecsCluster: t-marvel-ecs-vpc2
+      ecsCluster: t-marvel-ecs

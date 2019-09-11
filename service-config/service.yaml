@@ -1,8 +1,8 @@
-schema: 1.5.5
+schema: 2.0.0
 
 service:
   name:  registrator
-  tribe: foundation
+  tribe: product-stack
 infrastructure:
   web:
     preferences:
