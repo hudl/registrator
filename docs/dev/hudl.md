@@ -1,4 +1,8 @@
 
+# How Registrator Works
+
+Refer to [the diagram](./diagram.md) for some more information on how eureka registrations happen locally and on ECS.
+
 # Running Locally
 
 Registrator has a Makefile to help with testing locally.  It will start a eureka container and the current registrator version pointing to that. 
