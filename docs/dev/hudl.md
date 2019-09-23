@@ -7,13 +7,19 @@ Refer to [the diagram](./diagram.md) for some more information on how eureka reg
 
 Registrator has a Makefile to help with testing locally.  It will start a eureka container and the current registrator version pointing to that. 
 
+It also has a docker-compose.yml to assist with testing. That will run a eureka container locally, as well as a dummy container to register. To start it, just run:
+
+`docker-compose up --build`
+
 ## Go Setup
 
 1. Make sure you have go installed.  You will need a 1.7.x or 1.8.x release.
 
-### Mac (with homebrew):
+
+###  Mac (with homebrew):
 
 `brew install go`
+
 
 ### Windows:
 
