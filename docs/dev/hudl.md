@@ -15,18 +15,18 @@ It also has a docker-compose.yml to assist with testing. That will run a eureka 
 
 1. Make sure you have go installed.  You will need a 1.7.x or 1.8.x release.
 
+    ###  Mac (with homebrew):
 
-###  Mac (with homebrew):
-
-`brew install go`
-
-
-### Windows:
-
-Install from https://golang.org/dl/
+    `brew install go`
 
 
-2. Go is a little bit fussy about how it finds dependencies, this is a simpler way to resolve that problem (though there may be others).
+    ### Windows:
+
+    Install from https://golang.org/dl/
+
+
+
+1. Go is a little bit fussy about how it finds dependencies, this is a simpler way to resolve that problem (though there may be others).
 
     Go to the directory you wish to use as the src root in your shell.  Go will make a bit of a mess of this, so it could be a directory underneath where you usually check out things, e.g
 
@@ -47,9 +47,9 @@ Install from https://golang.org/dl/
     b. Click Advanced System Properties > Environment Variables
     c. Add a new system variable, looking something like this:
 
-    [Product Stack Tribe > Making Changes to Registrator > image2017-6-20_9-58-58.png]
+    ![windows env var](./windows_env_var.png)
 
-3. Start a new shell, and check out the code in the usual way.  The best place to do this to is by creating a directory structure like this:
+2. Start a new shell, and check out the code in the usual way.  The best place to do this to is by creating a directory structure like this:
 
     **Mac**
 
@@ -73,9 +73,9 @@ Install from https://golang.org/dl/
 
 ## Run Registrator
 
-Run make dev in the registrator directory.
+Run `docker-compose up --build`
 
-This will start a local eureka instance running at http://localhost:8090 and compile and run registrator in a docker container, pointing at that.
+This will start a local eureka instance running at http://localhost:8080 and compile and run registrator in a docker container, pointing at that.
 
 
 ## Making Changes
