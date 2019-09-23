@@ -2,6 +2,4 @@
 
 This diagram shows how registrator works when running locally and on thor/prod:
 
-![Operation diagram][diagram]
-
-[diagram]: ./Registrator_operation_diagram.png
+![Operation diagram](registrator_operation_diagram.png)
