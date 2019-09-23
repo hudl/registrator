@@ -1,4 +1,33 @@
-# Registrator
+# What Registrator Does
+
+In Multiverse applications, each application registers itself with Eureka. Because Marvel has a load balancer placed in front of the application containers, we need to register the load balancer rather than each application.
+
+Registrator monitors the running containers, determines the load balancer used for the application then registers the load balancer with Eureka and performs heartbeats.
+
+With Multiverse you’ve probably seen cases where an instance will drop out of Eureka, this is usually because the application crashes and stops heartbeating. With Marvel we have multiple copies of registrator doing heartbeats. An application crashing will cause the container to get automatically replaced with no disruption to heartbeats.
+
+
+If you are a consumer of this project in the open source community, and eureka support is useful for you, please feel free to contribute issues and PRs.
+
+# Known Issues
+
+We've seen 1 case of registrator hanging on an instance and not detecting new containers. In production with at least 3 instances of an application running this would only cause issues if all 3 registrator copies were hanging.
+
+# Sumologic Logs
+
+Prod: `_sourceCategory=app_registrator`
+Thor `_index=thor_env _sourceCategory=THOR_app_registrator`
+
+## Hudl Development Docs
+
+There are docs on the hudl development process and tools for registrator [docs/dev/hudl.md](docs/dev/hudl.md). 
+
+
+# Open Source Fork Information
+
+This hudl version of registrator is a fork of the gliderlabs open source project, which was released under the MIT license (see further docs below). It has at this point been quite heavily customised for hudl, and has the main addition of a eureka support PR, which was never merged into the upsteam repository (see:  xxx). Because of this, we've had some difficulty merging back improvements and changes. It should be possible to merge in upsteam changes, but there is some work involved to switch to using the new dependency management that the upsteam has adopted.
+
+# Open Source Registrator Documentation
 
 Service registry bridge for Docker.
 
