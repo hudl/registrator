@@ -18,14 +18,15 @@ We've seen 1 case of registrator hanging on an instance and not detecting new co
 Prod: `_sourceCategory=app_registrator`
 Thor `_index=thor_env _sourceCategory=THOR_app_registrator`
 
-## Hudl Development Docs
+
+# Hudl Development Docs
 
 There are docs on the hudl development process and tools for registrator [docs/dev/hudl.md](docs/dev/hudl.md). 
 
 
 # Open Source Fork Information
 
-This hudl version of registrator is a fork of the gliderlabs open source project, which was released under the MIT license (see further docs below). It has at this point been quite heavily customised for hudl, and has the main addition of a eureka support PR, which was never merged into the upsteam repository (see:  xxx). Because of this, we've had some difficulty merging back improvements and changes. It should be possible to merge in upsteam changes, but there is some work involved to switch to using the new dependency management that the upsteam has adopted.
+This hudl version of registrator is a fork of the gliderlabs open source project, which was released under the MIT license (see further docs below). It has at this point been quite heavily customised for hudl, and has the main addition of a eureka support PR, which was never merged into the upsteam repository (see: https://github.com/gliderlabs/registrator/pull/360). Because of this, we've had some difficulty merging back improvements and changes. It should be possible to merge in upsteam changes, but there is some work involved to switch to using the new dependency management that the upsteam has adopted.
 
 # Open Source Registrator Documentation
 
