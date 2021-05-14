@@ -531,7 +531,7 @@ func getELBStatus(client fargo.EurekaConnection, registration *fargo.Instance) f
 
 // RegisterWithELBv2 - If called, and flags are active, register an ELBv2 endpoint instead of the container directly
 // This will mean traffic is directed to the ALB rather than directly to containers
-func mutateRegistrationInfo(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
+func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
 	if CheckELBFlags(service) {
 		log.Debugf("Found ELBv2 flags, will attempt to register LB for: %s\n", GetUniqueID(*registration))
 		elbReg := mutateRegistrationInfo(service, registration)
