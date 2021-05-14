@@ -359,6 +359,10 @@ func getELBAndCacheDetails(l lookupValues) (lbinfo *LoadBalancerRegistrationInfo
 					continue
 				}
 				for _, thd := range tarH.TargetHealthDescriptions {
+					if thd == nil {
+						log.Warning("Nil TargetHealthDescription detected, skipping")
+						continue
+					}
 					if *thd.Target.Port == port && *thd.Target.Id == instanceID {
 						log.Debugf("Target group matched - %v", *tg.TargetGroupArn)
 						lbArns = tg.LoadBalancerArns
@@ -516,9 +520,9 @@ func getELBStatus(client fargo.EurekaConnection, registration *fargo.Instance) f
 	result, err := client.GetInstance(registration.App, GetUniqueID(*registration))
 	if err != nil || result == nil {
 		// Can't find the ELB, this is more than likely expected. It takes a short amount of time
-		// after a container launch, for a new service, for the ELB to be fully provisioned. 
+		// after a container launch, for a new service, for the ELB to be fully provisioned.
 		// This gets retried 3 times with the RegisterWithELBv2() method and an error is logged
-		// after each of those fail. 
+		// after each of those fail.
 		log.Warningf("ELB not yet present, or error retrieving from eureka: %s\n", err)
 		return fargo.UNKNOWN
 	}
@@ -527,7 +531,7 @@ func getELBStatus(client fargo.EurekaConnection, registration *fargo.Instance) f
 
 // RegisterWithELBv2 - If called, and flags are active, register an ELBv2 endpoint instead of the container directly
 // This will mean traffic is directed to the ALB rather than directly to containers
-func RegisterWithELBv2(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
+func mutateRegistrationInfo(service *bridge.Service, registration *fargo.Instance, client fargo.EurekaConnection) error {
 	if CheckELBFlags(service) {
 		log.Debugf("Found ELBv2 flags, will attempt to register LB for: %s\n", GetUniqueID(*registration))
 		elbReg := mutateRegistrationInfo(service, registration)
