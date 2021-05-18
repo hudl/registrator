@@ -344,7 +344,10 @@ func getELBAndCacheDetails(l lookupValues) (lbinfo *LoadBalancerRegistrationInfo
 		for _, tgs := range tgslice {
 			log.Debugf("%v target groups to check.", len(tgs.TargetGroups))
 			for _, tg := range tgs.TargetGroups {
-
+				if tg == nil {
+					log.Warning("Nil TargetGroup detected, skipping")
+					continue
+				}
 				thParams := &elbv2.DescribeTargetHealthInput{
 					TargetGroupArn: awssdk.String(*tg.TargetGroupArn),
 				}
