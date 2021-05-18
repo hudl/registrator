@@ -33,7 +33,7 @@ func (f *Factory) New(uri *url.URL) bridge.RegistryAdapter {
 type EurekaAdapter struct {
 	client fargo.EurekaConnection
 }
-
+// ADDING A NOOP CHANGE
 // Ping will try to connect to consul by attempting to retrieve the current leader.
 func (r *EurekaAdapter) Ping() error {
 
