@@ -203,7 +203,6 @@ SERVICE_EUREKA_DATACENTERINFO_PUBLICIPV4 = Host IP (ignored if using automatic p
 SERVICE_EUREKA_DATACENTERINFO_LOCALIPV4 = Host or Container IP (depending on -internal flag, ignored if using automatic population)
 SERVICE_EUREKA_DATACENTERINFO_LOCALHOSTNAME = Host or Container IP (depending on -internal flag, ignored if using automatic population)
 SERVICE_EUREKA_REGISTER_AWS_PUBLIC_IP = false (if true, set VIP and IPADDR values to AWS public IP, ignored if NOT using automatic population)
-SERVICE_EUREKA_LOOKUP_ELBV2_ENDPOINT = false (if true, an entry will be added for an ELBv2 connected to a container target group in ECS - see below for more details)
 SERVICE_EUREKA_ELBV2_HOSTNAME = If set, will explicitly be used as the ELBv2 hostname - see below section.
 SERVICE_EUREKA_ELBV2_PORT = If set, will be explicitly used as the ELBv2 Port - see below.
 SERVICE_EUREKA_ELBV2_TARGETGROUP = If set, will be explicitly used as the ELBv2 TargetGroup - see below.
@@ -227,18 +226,6 @@ If you are using ECS (EC2 Container Service) and run containers in target groups
 - You will end up with multiple entries in eureka with the same endpoint, one for each container.  HostName is still set to the container IP and port combo
 - Extra information added in metadata about being attached to the ELB; the `elbv2_endpoint` metadata and `has_elbv2` flag.
 
-#### Automatic Lookups
-
-If you set the flag `SERVICE_EUREKA_LOOKUP_ELBV2_ENDPOINT=true` AND you have `SERVICE_EUREKA_DATACENTERINFO_NAME=Amazon` then this feature is enabled.  
-
-It will attempt to connect to the AWS service using the IAM role of the container host.  In ECS, this should just work.  It will find the region associated with the container host, and connect using that region.
-
-#### Manual Endpoint Specification
-
-If you specify `SERVICE_EUREKA_ELBV2_HOSTNAME=`, `SERVICE_EUREKA_ELBV2_PORT=` and `SERVICE_EUREKA_ELBV2_TARGETGROUP=` values on the container, then these will be used, rather than a lookup attempted.
-
-If you specify the lookup flag, and also add ALL of these settings, the manual ones will take precedent.
-
 ### AWS ELBv2 Only Registration
 
 If the Amazon Datacenter type is used, the default is for `SERVICE_EUREKA_ELBv2_ONLY_REGISTRATION` - to be true. This works in line with the other ELBv2 options, which also must be set appropriately.
@@ -247,7 +234,16 @@ If the Amazon Datacenter type is used, the default is for `SERVICE_EUREKA_ELBv2_
 - Each time a new container associated with the ELB endpoint is started, registrator will send a `Reregister` to eureka, updating the metadata.
 - During deploys, the metadata will be updated once for each new container to start. As such, the newest metadata always wins.
 - Heartbeats are still piggybacked onto container lifecycles. As such, heartbeats will be sent to a given ELB endpoint as many times as there are associated containers running. It would be possible to alter `--ttl` and `-ttl-refresh registrator` startup options to compensate and reduce the number of heartbeats if desired.
-- A ELBv2 will not be explicitly removed once registered with eureka. Heartbeats will simply stop, as and when associated containers die. Once all associated containers stop heartbeating (that would be all within an ECS target group), the record would expire based on the `--ttl` registrator startup value.
+- An ELBv2 will not be explicitly removed once registered with eureka. Heartbeats will simply stop, as and when associated containers die. Once all associated containers stop heartbeating (that would be all within an ECS target group), the record would expire based on the `--ttl` registrator startup value.
+
+#### ELB Endpoint Specification
+
+When using ELB registrations, you need to set the following on the container:
+`SERVICE_EUREKA_ELBV2_HOSTNAME=`, 
+`SERVICE_EUREKA_ELBV2_PORT=`
+`SERVICE_EUREKA_ELBV2_TARGETGROUP=`
+
+These will ensure the endpoint is correctly registed in eureka.  If they are not all set correctly, then the container will be registered directly instead.
 
 #### IAM Policy
 In order for this to work (you will receive a log error if not) the IAM role attached to the ECS host must have something like the following additional policy:
